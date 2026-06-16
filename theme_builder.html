@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>DS916 Theme Builder</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#0f0f11;--panel:#18181c;--panel2:#1f1f25;--border:#2a2a35;
+  --accent:#00b4ff;--accent2:#33c8ff;--text:#e8e6df;--muted:#666;
+  --red:#e05a4b;--green:#4fc87a;--blue:#4b8fe0;--orange:#e0894b;
+  --purple:#a070d0;--teal:#40c8b0;--yellow:#d4b84a;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:13px;height:100vh;display:flex;flex-direction:column;overflow:hidden}
+
+/* TOP BAR */
+#topbar{height:46px;background:var(--panel);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:6px;padding:0 10px;flex-shrink:0;flex-wrap:nowrap;overflow:hidden}
+.logo{font-size:13px;font-weight:700;color:var(--accent);letter-spacing:.06em;white-space:nowrap;margin-right:4px}
+.btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:12px;white-space:nowrap;transition:background .1s}
+.btn:hover{background:#2a2a35}.btn.primary{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}.btn.primary:hover{background:var(--accent2)}
+.btn.danger{color:var(--red)}
+.sep{width:1px;height:22px;background:var(--border);flex-shrink:0}
+#themeName{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:4px 8px;border-radius:4px;font-size:12px;width:130px}
+#themeName:focus{outline:none;border-color:var(--accent)}
+.ob{padding:4px 9px;border-radius:4px;cursor:pointer;font-size:12px;border:1px solid var(--border);background:var(--panel2);color:var(--muted);white-space:nowrap;transition:all .1s}
+.ob.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
+#zv{color:var(--accent);font-size:12px;min-width:34px;text-align:center}
+
+/* MAIN LAYOUT */
+#main{display:flex;flex:1;overflow:hidden}
+
+/* LEFT SIDEBAR — PALETTE */
+#sidebar{width:218px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+.sh{padding:7px 10px 5px;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0}
+.elist{overflow-y:auto;flex:1}
+.egrp{border-bottom:1px solid rgba(255,255,255,.04)}
+.egtitle{padding:7px 10px 3px;font-size:9px;color:var(--muted);font-weight:700;text-transform:uppercase;letter-spacing:.08em;display:flex;align-items:center;gap:5px;cursor:pointer;user-select:none}
+.egtitle:hover{color:var(--text)}
+.egrp-items{}
+.ei{display:flex;align-items:center;gap:7px;padding:5px 10px;cursor:grab;transition:background .1s;user-select:none;border-bottom:1px solid rgba(255,255,255,.02)}
+.ei:hover{background:var(--panel2)}.ei:active{cursor:grabbing;background:#252530}
+.eico{width:20px;height:20px;border-radius:3px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;flex-shrink:0}
+.ic-t{background:rgba(75,143,224,.2);color:var(--blue)}
+.ic-b{background:rgba(79,200,122,.2);color:var(--green)}
+.ic-r{background:rgba(160,112,208,.2);color:var(--purple)}
+.ic-l{background:rgba(64,200,176,.2);color:var(--teal)}
+.ic-i{background:rgba(0,180,255,.15);color:var(--accent)}
+.ic-s{background:rgba(224,137,75,.2);color:var(--orange)}
+.ic-d{background:rgba(212,184,74,.2);color:var(--yellow)}
+.elabel{font-size:11px;font-weight:500}
+.esub{font-size:10px;color:var(--muted);margin-top:1px}
+
+/* CANVAS AREA */
+#cw{flex:1;overflow:auto;background:#080809;display:flex;align-items:flex-start;justify-content:center;padding:24px;position:relative}
+#co{position:relative;transform-origin:top center}
+#canvas{position:relative;background:#111114;overflow:hidden;box-shadow:0 8px 48px rgba(0,0,0,.9);cursor:default}
+#canvas.drag-over{outline:2px solid var(--accent)}
+.snap-line{position:absolute;pointer-events:none;z-index:1000;opacity:0;transition:opacity .1s}
+.snap-line.snap-h{left:0;right:0;height:1px;background:rgba(255,200,0,.85)}
+.snap-line.snap-v{top:0;bottom:0;width:1px;background:rgba(255,200,0,.85)}
+.snap-line.show{opacity:1}
+#backImg{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none}
+#backVid{position:absolute;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:0;pointer-events:none;display:none}
+.ce{position:absolute;cursor:move;user-select:none}
+.ce.sel .ei2{outline:2px solid var(--accent)!important;outline-offset:1px}
+.ei2{position:relative;width:100%;height:100%;overflow:visible}
+.rh{position:absolute;bottom:-5px;right:-5px;width:10px;height:10px;background:var(--accent);border-radius:2px;cursor:se-resize;z-index:20;display:none}
+.ce.sel .rh{display:block}
+.lz{position:absolute;top:1px;left:1px;font-size:8px;background:rgba(0,0,0,.8);color:var(--accent);padding:1px 3px;border-radius:2px;pointer-events:none;z-index:30;display:none}
+.ce.sel .lz{display:block}
+.tp{display:block;white-space:nowrap;pointer-events:none;line-height:1.1;overflow:hidden}
+.bprev{width:100%;height:100%;position:relative;overflow:hidden}
+.bfill{height:100%;transition:width .2s}
+.lprev{width:100%;height:100%;position:relative;overflow:hidden}
+.ring-wrap{width:100%;height:100%;display:flex;align-items:center;justify-content:center;pointer-events:none;position:relative}
+.iph{width:100%;height:100%;background:rgba(0,180,255,.05);border:2px dashed rgba(0,180,255,.3);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:3px;color:var(--accent);font-size:10px}
+.dec-ph{width:100%;height:100%;display:flex;align-items:center;justify-content:center;font-size:9px;color:rgba(255,255,255,.3)}
+
+/* RIGHT PROPS PANEL */
+#pb{width:262px;background:var(--panel);border-left:1px solid var(--border);overflow-y:auto;flex-shrink:0;display:flex;flex-direction:column}
+.ps{border-bottom:1px solid var(--border)}
+.pt{padding:7px 10px 5px;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase}
+.pr{display:flex;align-items:center;padding:3px 10px;gap:5px;min-height:24px}
+.pr label{font-size:11px;color:var(--muted);flex:0 0 72px;line-height:1.3}
+.pr input,.pr select,.pr textarea{flex:1;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:3px 6px;border-radius:3px;font-size:11px;min-width:0}
+.pr input:focus,.pr select:focus{outline:none;border-color:var(--accent)}
+.pr input[type=color]{padding:1px;height:24px;cursor:pointer;min-width:34px;flex:0 0 34px}
+.pr input[type=checkbox]{flex:none;width:14px;height:14px;cursor:pointer}
+.pe{padding:24px 12px;text-align:center;color:var(--muted);font-size:12px;line-height:1.7}
+.swatch{width:18px;height:18px;border-radius:2px;border:1px solid rgba(255,255,255,.25);cursor:pointer;flex-shrink:0;transition:transform .1s}
+.swatch:hover{transform:scale(1.15)}
+.palette-row{display:flex;gap:3px;flex-wrap:wrap;flex:1}
+.pr-btn{background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:2px 7px;border-radius:3px;cursor:pointer;font-size:10px;white-space:nowrap}
+.pr-btn:hover{background:#2a2a35}
+
+/* LAYERS */
+#lp{height:180px;background:var(--panel);border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column}
+#ll{overflow-y:auto;flex:1}
+.lr{display:flex;align-items:center;gap:5px;padding:4px 10px;cursor:pointer;border-bottom:1px solid rgba(255,255,255,.025)}
+.lr:hover{background:var(--panel2)}.lr.active{background:#202028;border-left:2px solid var(--accent)}
+.lrz{font-size:10px;color:var(--muted);width:22px;text-align:right;flex-shrink:0}
+.ltb{font-size:8px;padding:1px 4px;border-radius:2px;font-weight:700;flex-shrink:0;text-transform:uppercase}
+.lt-t{background:rgba(75,143,224,.2);color:var(--blue)}.lt-b{background:rgba(79,200,122,.2);color:var(--green)}
+.lt-r{background:rgba(160,112,208,.2);color:var(--purple)}.lt-l{background:rgba(64,200,176,.2);color:var(--teal)}
+.lt-i{background:rgba(0,180,255,.15);color:var(--accent)}.lt-s{background:rgba(224,137,75,.2);color:var(--orange)}
+.lt-d{background:rgba(212,184,74,.2);color:var(--yellow)}
+.lrn{flex:1;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrv{cursor:pointer;color:var(--muted);font-size:12px;padding:2px 4px}
+.lrv:hover{color:var(--text)}
+.lrd{cursor:pointer;color:var(--red);font-size:11px;padding:2px 4px;opacity:.5}.lrd:hover{opacity:1}
+
+/* STATUS BAR */
+#sb{height:22px;background:var(--panel);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 10px;gap:14px;flex-shrink:0;font-size:11px;color:var(--muted)}
+.sdot{width:5px;height:5px;border-radius:50%;background:var(--green);display:inline-block;margin-right:4px}
+
+/* TOAST */
+#toast{position:fixed;bottom:30px;left:50%;transform:translateX(-50%);background:#1e1e26;border:1px solid var(--border);color:var(--text);padding:8px 18px;border-radius:6px;font-size:12px;z-index:3000;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+#toast.show{opacity:1}
+
+/* MODAL */
+.mbg{position:fixed;inset:0;background:rgba(0,0,0,.8);z-index:2000;display:flex;align-items:center;justify-content:center}
+.modal{background:var(--panel);border:1px solid var(--border);border-radius:8px;padding:22px;min-width:340px;max-width:580px;width:90%;max-height:90vh;overflow-y:auto}
+.modal h2{font-size:14px;margin-bottom:14px;color:var(--accent);font-weight:700;letter-spacing:.04em}
+.mrow{margin-bottom:10px}.mrow label{display:block;font-size:11px;color:var(--muted);margin-bottom:3px}
+.mrow input,.mrow select,.mrow textarea{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:6px 9px;border-radius:4px;font-size:12px}
+.mrow input:focus,.mrow select:focus{outline:none;border-color:var(--accent)}
+.mbtns{display:flex;gap:8px;justify-content:flex-end;margin-top:16px}
+select option{background:#1f1f25}
+.sensor-map-table{width:100%;border-collapse:collapse;font-size:11px}
+.sensor-map-table th{text-align:left;padding:4px 8px;color:var(--muted);font-weight:600;border-bottom:1px solid var(--border)}
+.sensor-map-table td{padding:4px 8px;border-bottom:1px solid rgba(255,255,255,.04)}
+.sensor-map-table input{width:60px;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:11px;text-align:center}
+</style>
+</head>
+<body>
+
+<div id="topbar">
+  <span class="logo">⬡ DS916 BUILDER</span>
+  <div class="sep"></div>
+  <input id="themeName" type="text" placeholder="ThemeName" value="MyTheme">
+  <div class="sep"></div>
+  <button class="ob active" id="btnV" onclick="setOri('vertical')">▯ Vert</button>
+  <button class="ob" id="btnH" onclick="setOri('horizontal')">▭ Horiz</button>
+  <div class="sep"></div>
+  <button class="btn" onclick="chZoom(-0.1)">−</button>
+  <span id="zv">40%</span>
+  <button class="btn" onclick="chZoom(.1)">+</button>
+  <button class="btn" onclick="chZoom(0)">Fit</button>
+  <div class="sep"></div>
+  <button class="btn" onclick="loadBack()">🖼 Background</button>
+  <button class="btn" onclick="loadImgLayer()">+ Image</button>
+  <div class="sep"></div>
+  <button class="btn" onclick="openSensorMap()">⚙ Sensor Map</button>
+  <div class="sep"></div>
+  <button class="btn danger" onclick="clearAll()">Clear</button>
+  <button class="btn" onclick="importTheme()">📂 Import</button>
+  <button class="btn primary" onclick="exportTheme()">💾 Export</button>
+</div>
+
+<div id="main">
+  <!-- PALETTE -->
+  <div id="sidebar">
+    <div class="sh">Elements — drag or click to add</div>
+    <div class="elist">
+
+      <div class="egrp">
+        <div class="egtitle" onclick="toggleGrp(this)">▾ ⏱ Time &amp; Date</div>
+        <div class="egrp-items">
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'clock','CLOCK','')" onclick="add('clock','CLOCK','')"><div class="eico ic-t">T</div><div><div class="elabel">Clock</div><div class="esub">12h or 24h, with seconds</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'date','DATE','')" onclick="add('date','DATE','')"><div class="eico ic-t">T</div><div><div class="elabel">Date</div><div class="esub">Configurable format</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','WEEKDAY','')" onclick="add('text','WEEKDAY','')"><div class="eico ic-t">T</div><div><div class="elabel">Day of Week</div><div class="esub">Monday / Mon</div></div></div>
+        </div>
+      </div>
+
+      <div class="egrp">
+        <div class="egtitle" onclick="toggleGrp(this)">▾ 🖥 CPU</div>
+        <div class="egrp-items">
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','CPU_USAGE','%')" onclick="add('text','CPU_USAGE','%')"><div class="eico ic-t">T</div><div><div class="elabel">CPU Usage %</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','CPU_USAGE','')" onclick="add('bar','CPU_USAGE','')"><div class="eico ic-b">▬</div><div><div class="elabel">CPU Usage Bar</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'ring','CPU_USAGE','')" onclick="add('ring','CPU_USAGE','')"><div class="eico ic-r">○</div><div><div class="elabel">CPU Usage Ring</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'linegraph','CPU_USAGE','')" onclick="add('linegraph','CPU_USAGE','')"><div class="eico ic-l">〜</div><div><div class="elabel">CPU Usage Graph</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','CPU_TEMP','°C')" onclick="add('text','CPU_TEMP','°C')"><div class="eico ic-t">T</div><div><div class="elabel">CPU Temp</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','CPU_TEMP','')" onclick="add('bar','CPU_TEMP','')"><div class="eico ic-b">▬</div><div><div class="elabel">CPU Temp Bar</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'ring','CPU_TEMP','')" onclick="add('ring','CPU_TEMP','')"><div class="eico ic-r">○</div><div><div class="elabel">CPU Temp Ring</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'linegraph','CPU_TEMP','')" onclick="add('linegraph','CPU_TEMP','')"><div class="eico ic-l">〜</div><div><div class="elabel">CPU Temp Graph</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','CPU_FAN','RPM')" onclick="add('text','CPU_FAN','RPM')"><div class="eico ic-t">T</div><div><div class="elabel">CPU Fan RPM</div></div></div>
+        </div>
+      </div>
+
+      <div class="egrp">
+        <div class="egtitle" onclick="toggleGrp(this)">▾ 🎮 GPU</div>
+        <div class="egrp-items">
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','GPU_USAGE','%')" onclick="add('text','GPU_USAGE','%')"><div class="eico ic-t">T</div><div><div class="elabel">GPU Usage %</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','GPU_USAGE','')" onclick="add('bar','GPU_USAGE','')"><div class="eico ic-b">▬</div><div><div class="elabel">GPU Usage Bar</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'ring','GPU_USAGE','')" onclick="add('ring','GPU_USAGE','')"><div class="eico ic-r">○</div><div><div class="elabel">GPU Usage Ring</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'linegraph','GPU_USAGE','')" onclick="add('linegraph','GPU_USAGE','')"><div class="eico ic-l">〜</div><div><div class="elabel">GPU Usage Graph</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','GPU_TEMP','°C')" onclick="add('text','GPU_TEMP','°C')"><div class="eico ic-t">T</div><div><div class="elabel">GPU Temp</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','GPU_TEMP','')" onclick="add('bar','GPU_TEMP','')"><div class="eico ic-b">▬</div><div><div class="elabel">GPU Temp Bar</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'ring','GPU_TEMP','')" onclick="add('ring','GPU_TEMP','')"><div class="eico ic-r">○</div><div><div class="elabel">GPU Temp Ring</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','GPU_FAN1','RPM')" onclick="add('text','GPU_FAN1','RPM')"><div class="eico ic-t">T</div><div><div class="elabel">GPU Fan 1 RPM</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','GPU_FAN2','RPM')" onclick="add('text','GPU_FAN2','RPM')"><div class="eico ic-t">T</div><div><div class="elabel">GPU Fan 2 RPM</div></div></div>
+        </div>
+      </div>
+
+      <div class="egrp">
+        <div class="egtitle" onclick="toggleGrp(this)">▾ 🧠 RAM</div>
+        <div class="egrp-items">
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','RAM_USAGE','%')" onclick="add('text','RAM_USAGE','%')"><div class="eico ic-t">T</div><div><div class="elabel">RAM Usage %</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','RAM_USAGE','')" onclick="add('bar','RAM_USAGE','')"><div class="eico ic-b">▬</div><div><div class="elabel">RAM Usage Bar</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'ring','RAM_USAGE','')" onclick="add('ring','RAM_USAGE','')"><div class="eico ic-r">○</div><div><div class="elabel">RAM Usage Ring</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','RAM_USED_GB','GB')" onclick="add('text','RAM_USED_GB','GB')"><div class="eico ic-t">T</div><div><div class="elabel">RAM Used GB</div></div></div>
+        </div>
+      </div>
+
+      <div class="egrp">
+        <div class="egtitle" onclick="toggleGrp(this)">▾ 🌡 Fans &amp; Board</div>
+        <div class="egrp-items">
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','MB_TEMP','°C')" onclick="add('text','MB_TEMP','°C')"><div class="eico ic-t">T</div><div><div class="elabel">Motherboard Temp</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','MB_TEMP','')" onclick="add('bar','MB_TEMP','')"><div class="eico ic-b">▬</div><div><div class="elabel">Motherboard Temp Bar</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','CHASSIS_FAN1','RPM')" onclick="add('text','CHASSIS_FAN1','RPM')"><div class="eico ic-t">T</div><div><div class="elabel">Chassis Fan 1</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','CHASSIS_FAN2','RPM')" onclick="add('text','CHASSIS_FAN2','RPM')"><div class="eico ic-t">T</div><div><div class="elabel">Chassis Fan 2</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','CHASSIS_FAN1','')" onclick="add('bar','CHASSIS_FAN1','')"><div class="eico ic-b">▬</div><div><div class="elabel">Chassis Fan 1 Bar</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'bar','CHASSIS_FAN2','')" onclick="add('bar','CHASSIS_FAN2','')"><div class="eico ic-b">▬</div><div><div class="elabel">Chassis Fan 2 Bar</div></div></div>
+        </div>
+      </div>
+
+      <div class="egrp">
+        <div class="egtitle" onclick="toggleGrp(this)">▾ 🌐 Network</div>
+        <div class="egrp-items">
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','NET_DOWN','')" onclick="add('text','NET_DOWN','')"><div class="eico ic-t">T</div><div><div class="elabel">Download Speed</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'linegraph','NET_DOWN','')" onclick="add('linegraph','NET_DOWN','')"><div class="eico ic-l">〜</div><div><div class="elabel">Download Graph</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'text','NET_UP','')" onclick="add('text','NET_UP','')"><div class="eico ic-t">T</div><div><div class="elabel">Upload Speed</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'linegraph','NET_UP','')" onclick="add('linegraph','NET_UP','')"><div class="eico ic-l">〜</div><div><div class="elabel">Upload Graph</div></div></div>
+        </div>
+      </div>
+
+      <div class="egrp">
+        <div class="egtitle" onclick="toggleGrp(this)">▾ ✏ Static / Decorative</div>
+        <div class="egrp-items">
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'static','','')" onclick="add('static','','')"><div class="eico ic-s">S</div><div><div class="elabel">Static Label</div><div class="esub">Custom text</div></div></div>
+          <div class="ei" draggable="true" ondragstart="palDragStart(event,'rect','','')" onclick="add('rect','','')"><div class="eico ic-d">▭</div><div><div class="elabel">Rectangle</div><div class="esub">Decorative block</div></div></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- CANVAS + LAYERS -->
+  <div style="flex:1;display:flex;flex-direction:column;overflow:hidden">
+    <div id="cw" onclick="desel(event)" ondragover="cwDragOver(event)" ondrop="cwDrop(event)">
+      <div id="co"><div id="canvas">
+        <img id="backImg" src="" style="display:none">
+        <video id="backVid" autoplay loop muted playsinline></video>
+        <div class="snap-line snap-h" id="snapH" style="top:50%"></div>
+        <div class="snap-line snap-v" id="snapV" style="left:50%"></div>
+      </div></div>
+    </div>
+    <div id="lp">
+      <div class="sh">Layers — ↑ front  (Del=delete, click=select)</div>
+      <div id="ll"></div>
+    </div>
+  </div>
+
+  <!-- PROPERTIES -->
+  <div id="pb">
+    <div class="ps"><div class="pt">Properties</div>
+    <div id="pc"><div class="pe">Select an element<br>to edit its properties.</div></div>
+    </div>
+  </div>
+</div>
+
+<div id="sb">
+  <span><span class="sdot"></span>Ready</span>
+  <span id="ssel">0 elements</span>
+  <span id="ssz">462 × 1920</span>
+  <span id="sinfo">Nothing selected</span>
+</div>
+<div id="toast"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<script>
+'use strict';
+// ── STATE ──────────────────────────────────────────────────────────────────
+let ori='vertical', CW=462, CH=1920, zoom=0.4;
+let elems=[], selId=null, nid=1, nz=10, backData=null;
+let themeColors=['#ff0000ff','#00b4ffff','#00e888ff','#ffb400ff','#a070d0ff','#ffffffff','#000000ff'];
+let snapEnabled=true;
+
+// Sensor key metadata: label, unit, preview value, max for bars/rings
+const SEN={
+  CPU_USAGE:  {l:'CPU Usage',   u:'%',   s:42,    max:100},
+  CPU_TEMP:   {l:'CPU Temp',    u:'°C',  s:52,    max:120},
+  CPU_FAN:    {l:'CPU Fan',     u:'RPM', s:1200,  max:3000},
+  GPU_USAGE:  {l:'GPU Usage',   u:'%',   s:67,    max:100},
+  GPU_TEMP:   {l:'GPU Temp',    u:'°C',  s:61,    max:110},
+  GPU_FAN1:   {l:'GPU Fan 1',   u:'RPM', s:1800,  max:4000},
+  GPU_FAN2:   {l:'GPU Fan 2',   u:'RPM', s:1800,  max:4000},
+  MB_TEMP:    {l:'MB Temp',     u:'°C',  s:35,    max:80},
+  RAM_USAGE:  {l:'RAM Usage',   u:'%',   s:58,    max:100},
+  RAM_USED_GB:{l:'RAM Used',    u:'GB',  s:9.3,   max:32},
+  CHASSIS_FAN1:{l:'Chassis 1',  u:'RPM', s:850,   max:2000},
+  CHASSIS_FAN2:{l:'Chassis 2',  u:'RPM', s:1150,  max:2000},
+  NET_DOWN:   {l:'Download',    u:'',    s:'45 MB/s', max:null},
+  NET_UP:     {l:'Upload',      u:'',    s:'12 MB/s', max:null},
+  WEEKDAY:    {l:'Day of Week', u:'',    s:'Tuesday', max:null},
+  CLOCK:      {l:'Clock',       u:'',    s:'12:34:56 PM', max:null},
+  DATE:       {l:'Date',        u:'',    s:'16-06-2026', max:null},
+};
+
+// HWiNFO registry index mapping (user-configurable)
+let sensorMap={
+  CPU_USAGE:0, CPU_TEMP:1, MB_TEMP:2, CPU_FAN:3,
+  CHASSIS_FAN1:4, CHASSIS_FAN2:5, GPU_TEMP:6,
+  GPU_FAN1:7, GPU_FAN2:8, GPU_USAGE:9,
+  RAM_USAGE:null, RAM_USED_GB:null, NET_DOWN:null, NET_UP:null
+};
+
+// ── UTILS ─────────────────────────────────────────────────────────────────
+function $(id){return document.getElementById(id);}
+function toast(msg,dur=2200){
+  const t=$('toast'); t.textContent=msg; t.classList.add('show');
+  clearTimeout(t._t); t._t=setTimeout(()=>t.classList.remove('show'),dur);
+}
+function a2css(c){
+  if(!c||c.length<7) return c||'transparent';
+  // Support both #rrggbbaa and #aarrggbb (Jonsbo) and plain #rrggbb
+  if(c.startsWith('#')&&c.length===9){
+    // Detect format: if first 2 hex digits look like alpha (common values: ff, 00, 80)
+    // We use #rrggbbaa format (standard CSS-ish)
+    const r=parseInt(c.slice(1,3),16),g=parseInt(c.slice(3,5),16),
+          b=parseInt(c.slice(5,7),16),a=parseInt(c.slice(7,9),16)/255;
+    return `rgba(${r},${g},${b},${a.toFixed(3)})`;
+  }
+  return c; // plain #rrggbb or other
+}
+function hex2rgba(c){
+  // Returns {r,g,b,a} from #rrggbb or #rrggbbaa
+  c=c.replace('#','');
+  if(c.length===6) return {r:parseInt(c.slice(0,2),16),g:parseInt(c.slice(2,4),16),b:parseInt(c.slice(4,6),16),a:255};
+  if(c.length===8) return {r:parseInt(c.slice(0,2),16),g:parseInt(c.slice(2,4),16),b:parseInt(c.slice(4,6),16),a:parseInt(c.slice(6,8),16)};
+  return {r:0,g:0,b:0,a:255};
+}
+function rgba2hex(r,g,b,a=255){
+  return '#'+[r,g,b,a].map(v=>Math.round(v).toString(16).padStart(2,'0')).join('');
+}
+function pickerVal(c){
+  // Returns #rrggbb for <input type=color>
+  const {r,g,b}=hex2rgba(c||'#ffffff');
+  return '#'+[r,g,b].map(v=>v.toString(16).padStart(2,'0')).join('');
+}
+function getAlpha(c){return hex2rgba(c||'#ffffffff').a;}
+
+function genId(){return 'el_'+(nid++);}
+function nextZ(){return nz++;}
+function sensorLabel(key){return (SEN[key]||{l:key}).l;}
+function previewVal(key){return (SEN[key]||{s:'?'}).s;}
+
+// ── ORIENTATION ────────────────────────────────────────────────────────────
+function setOri(o){
+  ori=o; CW=o==='vertical'?462:1920; CH=o==='vertical'?1920:462;
+  $('btnV').classList.toggle('active',o==='vertical');
+  $('btnH').classList.toggle('active',o==='horizontal');
+  const c=$('canvas'); c.style.width=CW+'px'; c.style.height=CH+'px';
+  $('ssz').textContent=CW+' × '+CH;
+  applyZoom();
+}
+
+// ── ZOOM ──────────────────────────────────────────────────────────────────
+function chZoom(d){
+  if(d===0){
+    const w=$('cw');
+    zoom=Math.min((w.clientWidth-48)/CW,(w.clientHeight-48)/CH,.99);
+  } else zoom=Math.max(0.05,Math.min(2,zoom+d));
+  zoom=Math.round(zoom*100)/100;
+  applyZoom();
+}
+function applyZoom(){
+  const co=$('co');
+  co.style.transform=`scale(${zoom})`;
+  co.style.transformOrigin='top center';
+  co.style.marginBottom=(CH*zoom-CH)+'px';
+  $('zv').textContent=Math.round(zoom*100)+'%';
+}
+
+// ── BACKGROUND ────────────────────────────────────────────────────────────
+function loadBack(){
+  pick('image/*,video/mp4,video/x-msvideo,video/x-ms-wmv,.gif,.png,.jpg,.jpeg,.mp4,.avi,.wmv',f=>{
+    const isVid=/\.(mp4|avi|wmv|mov|webm)$/i.test(f.name);
+    backData={file:f,name:f.name,isVideo:isVid};
+    const r=new FileReader();
+    r.onload=e=>{backData.data=e.target.result; showBg(e.target.result,f.name,isVid);};
+    r.readAsDataURL(f);
+    toast('Background: '+f.name);
+  });
+}
+function showBg(url,name,isVid){
+  const img=$('backImg'), vid=$('backVid');
+  if(isVid){img.style.display='none';img.src='';vid.style.display='block';vid.src=url;vid.load();vid.play().catch(()=>{});}
+  else{vid.style.display='none';vid.src='';img.src=url;img.style.display='block';}
+}
+function loadImgLayer(){
+  pick('image/png,image/jpeg,image/gif',f=>{
+    const r=new FileReader();
+    r.onload=e=>{
+      const el={id:genId(),type:'image',data:e.target.result,file:f,filename:f.name,
+        x:0,y:0,w:CW,h:CH,z:nextZ(),visible:true};
+      addElem(el); toast('Image: '+f.name);
+    };
+    r.readAsDataURL(f);
+  });
+}
+function pick(accept,cb){
+  const i=document.createElement('input');i.type='file';i.accept=accept;
+  i.onchange=e=>{if(e.target.files[0])cb(e.target.files[0]);};i.click();
+}
+
+// ── PALETTE DRAG ──────────────────────────────────────────────────────────
+let palDrag=null;
+function palDragStart(e,type,key,unit){
+  palDrag={type,key,unit};
+  e.dataTransfer.effectAllowed='copy';
+  e.dataTransfer.setData('text/plain','palette');
+}
+function cwDragOver(e){e.preventDefault();e.dataTransfer.dropEffect='copy';}
+function cwDrop(e){
+  e.preventDefault();
+  if(!palDrag) return;
+  const cr=$('canvas').getBoundingClientRect();
+  const x=Math.round((e.clientX-cr.left)/zoom);
+  const y=Math.round((e.clientY-cr.top)/zoom);
+  add(palDrag.type,palDrag.key,palDrag.unit,x,y);
+  palDrag=null;
+}
+
+// ── ADD ELEMENT ───────────────────────────────────────────────────────────
+function add(type,key,unit,x,y){
+  const s=SEN[key]||{};
+  const id=genId(); const z=nextZ();
+  x=x??Math.round(CW*0.1); y=y??Math.round(CH*0.1);
+  let el={id,type,sensorKey:key,unit:unit||s.u||'',x,y,z,visible:true,prefix:'',suffix:''};
+  if(type==='text'||type==='static'||type==='clock'||type==='date'||type==='weekday'){
+    Object.assign(el,{w:300,h:60,fontSize:32,fontFamily:'Consolas',color:'#ffffffff',bold:false,
+      align:'left',
+      clockFormat:'12h',clockSeconds:true,
+      dateFormat:'DD-MM-YYYY',
+      weekdayFormat:'full'});
+  } else if(type==='bar'){
+    Object.assign(el,{w:320,h:18,fillColor:'#ff00b4ffff'||'#00b4ffff',borderColor:'#ff444455',bgColor:'#ff1a1a22',
+      borderThickness:0,cornerRadius:4,maxValue:s.max||100,direction:'horizontal'});
+    el.fillColor='#00b4ffff'; el.borderColor='#2a2a3800'; el.bgColor='#1a1a2299';
+  } else if(type==='ring'){
+    Object.assign(el,{w:180,h:180,ringWidth:14,maxValue:s.max||100,
+      arcColor:'#00b4ffff',trackColor:'#1a1a3399',showLabel:true,
+      labelColor:'#ffffffff',labelFontSize:28,labelFontFamily:'Consolas',labelBold:true});
+  } else if(type==='linegraph'){
+    Object.assign(el,{w:320,h:80,maxValue:s.max||100,lineColor:'#00b4ffff',
+      fillColor:'#00b4ff33',bgColor:'#0a0a1499',lineWidth:2,
+      historySeconds:60,showGrid:true,gridColor:'#ffffff22'});
+  } else if(type==='rect'){
+    Object.assign(el,{w:300,h:4,fillColor:'#00b4ff99',cornerRadius:0});
+  } else if(type==='image'){
+    Object.assign(el,{w:CW,h:CH,data:null,filename:''});
+  }
+  addElem(el);
+}
+function addElem(el){
+  elems.push(el); renderEl(el); refreshLayers(); sel(el.id); updStatus();
+}
+
+// ── RENDER ELEMENT ────────────────────────────────────────────────────────
+function renderEl(el){
+  const canvas=$('canvas');
+  let div=document.getElementById(el.id);
+  if(!div){
+    div=document.createElement('div');
+    div.id=el.id; div.className='ce';
+    div.innerHTML='<div class="ei2"></div><div class="rh"></div><div class="lz"></div>';
+    canvas.appendChild(div);
+    makeDrag(div,el); makeResize(div,el);
+    div.addEventListener('click',e=>{e.stopPropagation();sel(el.id);});
+    div.addEventListener('dblclick',e=>{e.stopPropagation();promptRename(el);});
+  }
+  div.style.cssText=`left:${el.x}px;top:${el.y}px;width:${el.w||100}px;height:${el.h||30}px;z-index:${el.z+10};display:${el.visible?'':'none'}`;
+  if(el.type!=='image') div.style.pointerEvents='';
+  div.querySelector('.lz').textContent='z:'+el.z;
+  const inner=div.querySelector('.ei2');
+
+  const pval=previewVal(el.sensorKey);
+  const pre=el.prefix||'';
+  const suf=el.suffix||(el.unit??' ');
+
+  if(el.type==='text'||el.type==='static'){
+    const val=el.type==='static'?(el.customText||'Label'):pval;
+    inner.style.cssText='overflow:hidden;width:100%;height:100%';
+    inner.innerHTML=`<span style="font-size:${el.fontSize||32}px;font-family:'${el.fontFamily||'Consolas'}',monospace,sans-serif;color:${a2css(el.color||'#ffffffff')};font-weight:${el.bold?700:400};text-align:${el.align||'left'};display:block;white-space:nowrap;line-height:1.1">${pre}${val}${suf}</span>`;
+  } else if(el.type==='clock'){
+    const fmt=el.clockFormat||'12h';
+    const secs=el.clockSeconds!==false;
+    let timeStr=fmt==='12h'?(secs?'12:34:56 PM':'12:34 PM'):(secs?'14:34:56':'14:34');
+    inner.style.cssText='overflow:hidden;width:100%;height:100%';
+    inner.innerHTML=`<span style="font-size:${el.fontSize||32}px;font-family:'${el.fontFamily||'Consolas'}',monospace;color:${a2css(el.color||'#ffffffff')};font-weight:${el.bold?700:400};text-align:${el.align||'center'};display:block;white-space:nowrap;line-height:1.1">${timeStr}</span>`;
+  } else if(el.type==='date'){
+    const fmt=el.dateFormat||'DD-MM-YYYY';
+    const sample=fmt.replace('DD','16').replace('MM','06').replace('YYYY','2026').replace('YY','26');
+    inner.style.cssText='overflow:hidden;width:100%;height:100%';
+    inner.innerHTML=`<span style="font-size:${el.fontSize||28}px;font-family:'${el.fontFamily||'Consolas'}',monospace;color:${a2css(el.color||'#aaaabbff')};font-weight:${el.bold?700:400};text-align:${el.align||'center'};display:block;white-space:nowrap;line-height:1.1">${sample}</span>`;
+  } else if(el.type==='weekday'||el.type==='text'&&el.sensorKey==='WEEKDAY'){
+    const fmt=el.weekdayFormat||'full';
+    const sample=fmt==='full'?'Tuesday':'Tue';
+    inner.style.cssText='overflow:hidden;width:100%;height:100%';
+    inner.innerHTML=`<span style="font-size:${el.fontSize||28}px;font-family:'${el.fontFamily||'Consolas'}',monospace;color:${a2css(el.color||'#aaaabbff')};font-weight:${el.bold?700:400};text-align:${el.align||'center'};display:block;white-space:nowrap;line-height:1.1">${sample}</span>`;
+  } else if(el.type==='bar'){
+    const pct=Math.min(100,(parseFloat(pval)/(el.maxValue||100))*100)||42;
+    const rad=el.cornerRadius||0;
+    inner.style.cssText='overflow:hidden;width:100%;height:100%;border-radius:'+rad+'px';
+    inner.innerHTML=`<div style="width:100%;height:100%;background:${a2css(el.bgColor)};border-radius:${rad}px;overflow:hidden;border:${el.borderThickness||0}px solid ${a2css(el.borderColor)}">
+      <div style="width:${pct}%;height:100%;background:${a2css(el.fillColor)};border-radius:${rad}px 0 0 ${rad}px;transition:width .3s"></div></div>`;
+  } else if(el.type==='ring'){
+    const pct=(parseFloat(pval)/(el.maxValue||100))||0.42;
+    const diam=Math.min(el.w,el.h);
+    const rw=el.ringWidth||14;
+    const r=Math.max(4,(diam/2)-rw/2);
+    const circ=2*Math.PI*r;
+    const dash=circ*Math.min(1,pct);
+    const cx=el.w/2, cy=el.h/2;
+    const labelHtml=el.showLabel?`<text x="${cx}" y="${cy+parseInt(el.labelFontSize||28)*0.38}" text-anchor="middle" dominant-baseline="middle" fill="${a2css(el.labelColor||'#ffffffff')}" font-size="${el.labelFontSize||28}" font-family="${el.labelFontFamily||'Consolas'}" font-weight="${el.labelBold?700:400}">${Math.round(parseFloat(pval)||0)}${el.unit||''}</text>`:'';
+    inner.innerHTML=`<svg width="${el.w}" height="${el.h}" viewBox="0 0 ${el.w} ${el.h}" style="display:block">
+      <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${a2css(el.trackColor||'#1a1a3399')}" stroke-width="${rw}"/>
+      <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${a2css(el.arcColor||'#00b4ffff')}" stroke-width="${rw}" stroke-dasharray="${dash.toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cy})"/>
+      ${labelHtml}</svg>`;
+  } else if(el.type==='linegraph'){
+    const pts=[]; const n=30;
+    const key=el.sensorKey; const max=el.maxValue||100;
+    for(let i=0;i<n;i++){
+      const noise=Math.sin(i*.4)*15+Math.random()*10;
+      pts.push(Math.min(max,Math.max(0,(parseFloat(previewVal(key))||50)+noise)));
+    }
+    const W=el.w, H=el.h;
+    const xs=(i)=>i/(n-1)*W;
+    const ys=(v)=>H-((v/max)*H*0.9+H*0.05);
+    const path='M '+pts.map((v,i)=>`${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(' L ');
+    const fillPath=path+` L ${W},${H} L 0,${H} Z`;
+    const grid=el.showGrid?Array.from({length:4},(_,i)=>{const gy=H*(i+1)/5;return `<line x1="0" y1="${gy.toFixed(0)}" x2="${W}" y2="${gy.toFixed(0)}" stroke="${a2css(el.gridColor||'#ffffff22')}" stroke-width="1"/>`;}).join(''):'';
+    inner.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;border-radius:${el.cornerRadius||4}px;overflow:hidden">
+      <rect width="${W}" height="${H}" fill="${a2css(el.bgColor||'#0a0a1499')}"/>
+      ${grid}
+      <path d="${fillPath}" fill="${a2css(el.fillColor||'#00b4ff22')}" stroke="none"/>
+      <path d="${path}" fill="none" stroke="${a2css(el.lineColor||'#00b4ffff')}" stroke-width="${el.lineWidth||2}" stroke-linejoin="round" stroke-linecap="round"/>
+    </svg>`;
+  } else if(el.type==='rect'){
+    inner.innerHTML=`<div style="width:100%;height:100%;background:${a2css(el.fillColor||'#00b4ff99')};border-radius:${el.cornerRadius||0}px"></div>`;
+  } else if(el.type==='image'){
+    div.style.pointerEvents='none';
+    if(el.data){
+      inner.innerHTML=`<img src="${el.data}" style="width:100%;height:100%;object-fit:cover;display:block;pointer-events:none">`;
+    } else {
+      inner.innerHTML=`<div class="iph">📷<span>${el.filename||'image'}</span></div>`;
+    }
+  }
+}
+
+// ── DRAG & RESIZE ─────────────────────────────────────────────────────────
+function makeDrag(div,el){
+  div.addEventListener('mousedown',e=>{
+    if(e.target.classList.contains('rh')) return;
+    e.preventDefault();
+    sel(el.id);
+    const ox=e.clientX,oy=e.clientY,ex=el.x,ey=el.y;
+    const mm=e2=>{
+      let nx=Math.round(ex+(e2.clientX-ox)/zoom);
+      let ny=Math.round(ey+(e2.clientY-oy)/zoom);
+      if(snapEnabled){
+        const sc=doSnap(nx,ny,el.w||0,el.h||0,el.id);
+        nx=sc.x; ny=sc.y;
+      }
+      el.x=nx; el.y=ny;
+      div.style.left=nx+'px'; div.style.top=ny+'px';
+      updPosInputs(el);
+    };
+    const mu=()=>{hideSnaps();document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);};
+    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+  });
+}
+function makeResize(div,el){
+  const h=div.querySelector('.rh');
+  h.addEventListener('mousedown',e=>{
+    e.stopPropagation();e.preventDefault();
+    const ox=e.clientX,oy=e.clientY,ow=el.w||100,oh=el.h||30;
+    const mm=e2=>{
+      el.w=Math.max(10,Math.round(ow+(e2.clientX-ox)/zoom));
+      el.h=Math.max(6, Math.round(oh+(e2.clientY-oy)/zoom));
+      div.style.width=el.w+'px'; div.style.height=el.h+'px';
+      renderEl(el); updSizeInputs(el);
+    };
+    const mu=()=>{document.removeEventListener('mousemove',mm);document.removeEventListener('mouseup',mu);};
+    document.addEventListener('mousemove',mm);document.addEventListener('mouseup',mu);
+  });
+}
+
+// ── SNAPPING ──────────────────────────────────────────────────────────────
+function doSnap(x,y,w,h,skipId){
+  const THRESH=8/zoom;
+  const cx=x+w/2, cy=y+h/2, rx=x+w, ry=y+h;
+  let bx=x,by=y,snapH=null,snapV=null;
+  const checks=[{x:CW/2,y:null},{x:0,y:null},{x:CW,y:null},{x:null,y:CH/2},{x:null,y:0},{x:null,y:CH}];
+  for(const o of elems.filter(e=>e.id!==skipId&&e.visible)){
+    checks.push({x:o.x,y:null},{x:o.x+o.w/2,y:null},{x:o.x+o.w,y:null});
+    checks.push({x:null,y:o.y},{x:null,y:o.y+o.h/2},{x:null,y:o.y+o.h});
+  }
+  for(const c of checks){
+    if(c.x!==null){
+      if(Math.abs(x-c.x)<THRESH){bx=c.x;snapV=c.x;}
+      else if(Math.abs(cx-c.x)<THRESH){bx=c.x-w/2;snapV=c.x;}
+      else if(Math.abs(rx-c.x)<THRESH){bx=c.x-w;snapV=c.x;}
+    }
+    if(c.y!==null){
+      if(Math.abs(y-c.y)<THRESH){by=c.y;snapH=c.y;}
+      else if(Math.abs(cy-c.y)<THRESH){by=c.y-h/2;snapH=c.y;}
+      else if(Math.abs(ry-c.y)<THRESH){by=c.y-h;snapH=c.y;}
+    }
+  }
+  const sh=$('snapH'),sv=$('snapV');
+  if(snapH!==null){sh.style.top=snapH+'px';sh.classList.add('show');}else sh.classList.remove('show');
+  if(snapV!==null){sv.style.left=snapV+'px';sv.classList.add('show');}else sv.classList.remove('show');
+  return {x:Math.round(bx),y:Math.round(by)};
+}
+function hideSnaps(){$('snapH').classList.remove('show');$('snapV').classList.remove('show');}
+
+// ── SELECT ────────────────────────────────────────────────────────────────
+function sel(id){
+  document.querySelectorAll('.ce').forEach(d=>d.classList.remove('sel'));
+  document.querySelectorAll('.lr').forEach(r=>r.classList.remove('active'));
+  selId=id;
+  if(!id){renderProps(null);updStatus();return;}
+  const div=document.getElementById(id); if(div)div.classList.add('sel');
+  const lr=document.querySelector(`.lr[data-id="${id}"]`); if(lr)lr.classList.add('active');
+  renderProps(elems.find(e=>e.id===id));
+  updStatus();
+}
+function desel(e){if(e.target.id==='cw'||e.target.id==='co'||e.target.id==='canvas')sel(null);}
+function delSel(){
+  if(!selId)return;
+  elems=elems.filter(e=>e.id!==selId);
+  const d=document.getElementById(selId); if(d)d.remove();
+  selId=null; refreshLayers(); renderProps(null); updStatus();
+  toast('Element deleted');
+}
+document.addEventListener('keydown',e=>{
+  if(e.target.tagName==='INPUT'||e.target.tagName==='SELECT'||e.target.tagName==='TEXTAREA') return;
+  if(e.key==='Delete'||e.key==='Backspace') delSel();
+  if(e.key==='Escape') sel(null);
+});
+function promptRename(el){
+  if(el.type==='static'){
+    const v=prompt('Label text:',el.customText||'');
+    if(v!==null){el.customText=v;renderEl(el);if(selId===el.id)renderProps(el);}
+  }
+}
+
+// ── PROPERTIES ────────────────────────────────────────────────────────────
+function sp(prop,val,re=true){
+  const el=elems.find(e=>e.id===selId); if(!el)return;
+  el[prop]=val; if(re)renderEl(el);
+  updPosInputs(el); updSizeInputs(el);
+}
+function updPosInputs(el){
+  const px=document.getElementById('px'),py=document.getElementById('py');
+  if(px&&selId===el.id){px.value=Math.round(el.x);py.value=Math.round(el.y);}
+}
+function updSizeInputs(el){
+  const pw=document.getElementById('pw'),ph=document.getElementById('ph');
+  if(pw&&selId===el.id){pw.value=el.w;ph.value=el.h;}
+}
+
+function colorRow(label,field,el){
+  const hex=pickerVal(el[field]||'#ffffff');
+  const alpha=getAlpha(el[field]||'#ffffffff');
+  const pal=themeColors.map((tc,i)=>`<div class="swatch" title="${tc}" style="background:${a2css(tc)}" onclick="applyColor('${field}','${tc}')"></div>`).join('');
+  return `<div class="pr"><label>${label}</label>
+    <input type="color" value="${hex}" onchange="setColor('${field}',this.value)">
+    <input type="number" min="0" max="255" style="width:46px" value="${alpha}" title="Alpha 0-255" onchange="setAlpha('${field}',+this.value)">
+    <button class="pr-btn" onclick="saveColor(elems.find(e=>e.id==='${el.id}')?.[' ${field}']||'#ffffff')" title="Save to palette">+</button>
+  </div>
+  <div class="pr"><label></label><div class="palette-row">${pal}</div></div>`;
+}
+function setColor(field,hexRgb){
+  const el=elems.find(e=>e.id===selId); if(!el)return;
+  const a=getAlpha(el[field]||'#ffffffff');
+  const r=parseInt(hexRgb.slice(1,3),16),g=parseInt(hexRgb.slice(3,5),16),b=parseInt(hexRgb.slice(5,7),16);
+  el[field]=rgba2hex(r,g,b,a); renderEl(el);
+}
+function setAlpha(field,a){
+  const el=elems.find(e=>e.id===selId); if(!el)return;
+  const {r,g,b}=hex2rgba(el[field]||'#ffffffff');
+  el[field]=rgba2hex(r,g,b,Math.max(0,Math.min(255,a))); renderEl(el);
+}
+function applyColor(field,tc){
+  const el=elems.find(e=>e.id===selId); if(!el)return;
+  el[field]=tc; renderEl(el); renderProps(el);
+}
+function saveColor(c){if(!c)return; if(!themeColors.includes(c)){themeColors=[...themeColors,c].slice(-12);} toast('Color saved to palette');}
+
+function fontRow(el){
+  const fonts=['Consolas','Arial','Segoe UI','Courier New','Tahoma','Verdana','Impact','Georgia'];
+  const opts=fonts.map(f=>`<option value="${f}" ${f===el.fontFamily?'selected':''}>${f}</option>`).join('');
+  return `<div class="pr"><label>Font</label><select onchange="sp('fontFamily',this.value,true)">${opts}</select></div>
+  <div class="pr"><label>Size px</label><input type="number" value="${el.fontSize||32}" onchange="sp('fontSize',+this.value,true)" min="6" max="400"></div>
+  <div class="pr"><label>Bold</label><input type="checkbox" ${el.bold?'checked':''} onchange="sp('bold',this.checked,true)"></div>
+  <div class="pr"><label>Align</label><select onchange="sp('align',this.value,true)">
+    <option value="left" ${el.align==='left'?'selected':''}>Left</option>
+    <option value="center" ${el.align==='center'?'selected':''}>Center</option>
+    <option value="right" ${el.align==='right'?'selected':''}>Right</option>
+  </select></div>`;
+}
+
+function renderProps(el){
+  const pc=$('pc');
+  if(!el){pc.innerHTML='<div class="pe">Select an element<br>to edit its properties.</div>';return;}
+
+  // Position & Size
+  let h=`<div class="ps"><div class="pt">Position &amp; Size</div>
+  <div class="pr"><label>X</label><input type="number" id="px" value="${Math.round(el.x)}" onchange="sp('x',+this.value,false);document.getElementById('el_'+selId.replace('el_',''))&&(document.getElementById(selId).style.left=el.x+'px')"></div>
+  <div class="pr"><label>Y</label><input type="number" id="py" value="${Math.round(el.y)}" onchange="sp('y',+this.value,false);document.getElementById(selId).style.top=el.y+'px'"></div>
+  <div class="pr"><label>Width</label><input type="number" id="pw" value="${el.w||100}" onchange="sp('w',+this.value,true);document.getElementById(selId).style.width=el.w+'px'"></div>
+  <div class="pr"><label>Height</label><input type="number" id="ph" value="${el.h||30}" onchange="sp('h',+this.value,true);document.getElementById(selId).style.height=el.h+'px'"></div>
+  <div class="pr"><label>Z-Order</label><input type="number" value="${el.z}" onchange="sp('z',+this.value,false);document.getElementById(selId).style.zIndex=el.z+10;refreshLayers()"></div>
+  </div>`;
+
+  // Align
+  h+=`<div class="ps"><div class="pt">Alignment</div>
+  <div class="pr"><label>Snap to</label>
+    <button class="pr-btn" onclick="snapH('left')">⇤ L</button>
+    <button class="pr-btn" onclick="snapH('center')">↔ Ctr</button>
+    <button class="pr-btn" onclick="snapH('right')">⇥ R</button>
+  </div>
+  <div class="pr"><label></label>
+    <button class="pr-btn" onclick="snapV('top')">⇡ Top</button>
+    <button class="pr-btn" onclick="snapV('mid')">↕ Mid</button>
+    <button class="pr-btn" onclick="snapV('bottom')">⇣ Bot</button>
+  </div>
+  <div class="pr"><label>Snap drag</label><input type="checkbox" ${snapEnabled?'checked':''} onchange="snapEnabled=this.checked"></div>
+  </div>`;
+
+  // Visibility
+  h+=`<div class="ps"><div class="pt">Visibility</div>
+  <div class="pr"><label>Visible</label><input type="checkbox" ${el.visible?'checked':''} onchange="sp('visible',this.checked,false);document.getElementById(selId).style.display=el.visible?'':'none'"></div>
+  </div>`;
+
+  // Type-specific
+  if(el.type==='clock'){
+    h+=`<div class="ps"><div class="pt">Clock</div>
+    <div class="pr"><label>Format</label><select onchange="sp('clockFormat',this.value,true)">
+      <option value="12h" ${el.clockFormat==='12h'?'selected':''}>12-hour (PM/AM)</option>
+      <option value="24h" ${el.clockFormat==='24h'?'selected':''}>24-hour</option>
+    </select></div>
+    <div class="pr"><label>Seconds</label><input type="checkbox" ${el.clockSeconds!==false?'checked':''} onchange="sp('clockSeconds',this.checked,true)"></div>
+    </div>`;
+    h+=fontSection(el)+colorSection('color','Text Color',el);
+  } else if(el.type==='date'){
+    const fmts=['DD-MM-YYYY','MM-DD-YYYY','YYYY-MM-DD','DD/MM/YYYY','MM/DD/YYYY','DD.MM.YYYY','MMMM DD, YYYY','DD MMMM YYYY'];
+    const opts=fmts.map(f=>`<option value="${f}" ${f===el.dateFormat?'selected':''}>${f}</option>`).join('');
+    h+=`<div class="ps"><div class="pt">Date</div>
+    <div class="pr"><label>Format</label><select onchange="sp('dateFormat',this.value,true)">${opts}</select></div>
+    <div class="pr"><label>Custom</label><input type="text" value="${el.dateFormat||'DD-MM-YYYY'}" onchange="sp('dateFormat',this.value,true)" placeholder="DD-MM-YYYY"></div>
+    </div>`;
+    h+=fontSection(el)+colorSection('color','Text Color',el);
+  } else if(el.type==='weekday'){
+    h+=`<div class="ps"><div class="pt">Day of Week</div>
+    <div class="pr"><label>Format</label><select onchange="sp('weekdayFormat',this.value,true)">
+      <option value="full" ${el.weekdayFormat==='full'?'selected':''}>Full (Tuesday)</option>
+      <option value="short" ${el.weekdayFormat==='short'?'selected':''}>Short (Tue)</option>
+    </select></div>
+    </div>`;
+    h+=fontSection(el)+colorSection('color','Text Color',el);
+  } else if(el.type==='static'){
+    h+=`<div class="ps"><div class="pt">Static Text</div>
+    <div class="pr"><label>Text</label><input type="text" value="${el.customText||'Label'}" onchange="sp('customText',this.value,true)"></div>
+    </div>`;
+    h+=fontSection(el)+colorSection('color','Text Color',el);
+  } else if(el.type==='text'){
+    const senOpts=Object.keys(SEN).filter(k=>!['CLOCK','DATE','WEEKDAY'].includes(k)).map(k=>`<option value="${k}" ${k===el.sensorKey?'selected':''}>${SEN[k].l}</option>`).join('');
+    h+=`<div class="ps"><div class="pt">Sensor Value</div>
+    <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey',this.value,true)">${senOpts}</select></div>
+    <div class="pr"><label>Prefix</label><input type="text" value="${el.prefix||''}" placeholder="e.g. CPU:" onchange="sp('prefix',this.value,true)"></div>
+    <div class="pr"><label>Unit/Suffix</label><input type="text" value="${el.unit||''}" onchange="sp('unit',this.value,true)"></div>
+    </div>`;
+    h+=fontSection(el)+colorSection('color','Text Color',el);
+  } else if(el.type==='bar'){
+    const senOpts=Object.keys(SEN).filter(k=>SEN[k].max!==null).map(k=>`<option value="${k}" ${k===el.sensorKey?'selected':''}>${SEN[k].l}</option>`).join('');
+    h+=`<div class="ps"><div class="pt">Bar</div>
+    <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey',this.value,true)">${senOpts}</select></div>
+    <div class="pr"><label>Max Value</label><input type="number" value="${el.maxValue||100}" onchange="sp('maxValue',+this.value,true)"></div>
+    <div class="pr"><label>Corner R</label><input type="number" value="${el.cornerRadius||0}" onchange="sp('cornerRadius',+this.value,true)" min="0" max="50"></div>
+    <div class="pr"><label>Border px</label><input type="number" value="${el.borderThickness||0}" onchange="sp('borderThickness',+this.value,true)" min="0" max="10"></div>
+    </div>`;
+    h+=colorSection('fillColor','Fill',el)+colorSection('bgColor','Background',el)+colorSection('borderColor','Border',el);
+  } else if(el.type==='ring'){
+    const senOpts=Object.keys(SEN).filter(k=>SEN[k].max!==null).map(k=>`<option value="${k}" ${k===el.sensorKey?'selected':''}>${SEN[k].l}</option>`).join('');
+    h+=`<div class="ps"><div class="pt">Ring Gauge</div>
+    <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey',this.value,true)">${senOpts}</select></div>
+    <div class="pr"><label>Max Value</label><input type="number" value="${el.maxValue||100}" onchange="sp('maxValue',+this.value,true)"></div>
+    <div class="pr"><label>Ring Width</label><input type="number" value="${el.ringWidth||14}" onchange="sp('ringWidth',+this.value,true)" min="2" max="60"></div>
+    <div class="pr"><label>Show Label</label><input type="checkbox" ${el.showLabel?'checked':''} onchange="sp('showLabel',this.checked,true)"></div>
+    </div>`;
+    if(el.showLabel){
+      const fonts=['Consolas','Arial','Segoe UI','Courier New'];
+      const fo=fonts.map(f=>`<option value="${f}" ${f===el.labelFontFamily?'selected':''}>${f}</option>`).join('');
+      h+=`<div class="ps"><div class="pt">Label</div>
+      <div class="pr"><label>Font Size</label><input type="number" value="${el.labelFontSize||28}" onchange="sp('labelFontSize',+this.value,true)"></div>
+      <div class="pr"><label>Font</label><select onchange="sp('labelFontFamily',this.value,true)">${fo}</select></div>
+      <div class="pr"><label>Bold</label><input type="checkbox" ${el.labelBold?'checked':''} onchange="sp('labelBold',this.checked,true)"></div>
+      <div class="pr"><label>Unit Suffix</label><input type="text" value="${el.unit||''}" onchange="sp('unit',this.value,true)"></div>
+      </div>`;
+      h+=colorSection('labelColor','Label Color',el);
+    }
+    h+=colorSection('arcColor','Arc Color',el)+colorSection('trackColor','Track Color',el);
+  } else if(el.type==='linegraph'){
+    const senOpts=Object.keys(SEN).filter(k=>typeof SEN[k].s==='number').map(k=>`<option value="${k}" ${k===el.sensorKey?'selected':''}>${SEN[k].l}</option>`).join('');
+    h+=`<div class="ps"><div class="pt">Line Graph</div>
+    <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey',this.value,true)">${senOpts}</select></div>
+    <div class="pr"><label>Max Value</label><input type="number" value="${el.maxValue||100}" onchange="sp('maxValue',+this.value,true)"></div>
+    <div class="pr"><label>History (s)</label><input type="number" value="${el.historySeconds||60}" onchange="sp('historySeconds',+this.value,false)" min="5" max="3600"></div>
+    <div class="pr"><label>Line Width</label><input type="number" value="${el.lineWidth||2}" onchange="sp('lineWidth',+this.value,true)" min="1" max="10"></div>
+    <div class="pr"><label>Show Grid</label><input type="checkbox" ${el.showGrid?'checked':''} onchange="sp('showGrid',this.checked,true)"></div>
+    <div class="pr"><label>Corner R</label><input type="number" value="${el.cornerRadius||4}" onchange="sp('cornerRadius',+this.value,true)" min="0" max="40"></div>
+    </div>`;
+    h+=colorSection('lineColor','Line Color',el)+colorSection('fillColor','Fill Color',el)+
+       colorSection('bgColor','Background',el)+colorSection('gridColor','Grid Color',el);
+  } else if(el.type==='rect'){
+    h+=`<div class="ps"><div class="pt">Rectangle</div>
+    <div class="pr"><label>Corner R</label><input type="number" value="${el.cornerRadius||0}" onchange="sp('cornerRadius',+this.value,true)" min="0" max="200"></div>
+    </div>`;
+    h+=colorSection('fillColor','Fill Color',el);
+  } else if(el.type==='image'){
+    h+=`<div class="ps"><div class="pt">Image Layer</div>
+    <div class="pr"><label>File</label><span style="font-size:10px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis">${el.filename||'none'}</span></div>
+    <div class="pr"><label></label><button class="pr-btn" onclick="reloadImg('${el.id}')">📂 Change Image</button></div>
+    </div>`;
+  }
+
+  pc.innerHTML=h;
+}
+
+function fontSection(el){
+  const fonts=['Consolas','Arial','Segoe UI','Courier New','Tahoma','Verdana','Impact','Georgia'];
+  const opts=fonts.map(f=>`<option value="${f}" ${f===el.fontFamily?'selected':''}>${f}</option>`).join('');
+  return `<div class="ps"><div class="pt">Font</div>
+  <div class="pr"><label>Family</label><select onchange="sp('fontFamily',this.value,true)">${opts}</select></div>
+  <div class="pr"><label>Size px</label><input type="number" value="${el.fontSize||32}" onchange="sp('fontSize',+this.value,true)" min="6" max="400"></div>
+  <div class="pr"><label>Bold</label><input type="checkbox" ${el.bold?'checked':''} onchange="sp('bold',this.checked,true)"></div>
+  <div class="pr"><label>Align</label><select onchange="sp('align',this.value,true)">
+    <option value="left" ${(!el.align||el.align==='left')?'selected':''}>Left</option>
+    <option value="center" ${el.align==='center'?'selected':''}>Center</option>
+    <option value="right" ${el.align==='right'?'selected':''}>Right</option>
+  </select></div>
+  </div>`;
+}
+function colorSection(field,label,el){
+  const hex=pickerVal(el[field]||'#ffffff');
+  const alpha=getAlpha(el[field]||'#ffffffff');
+  const pal=themeColors.map(tc=>`<div class="swatch" title="${tc}" style="background:${a2css(tc)}" onclick="applyColor('${field}','${tc}')"></div>`).join('');
+  return `<div class="ps"><div class="pt">${label}</div>
+  <div class="pr"><label>Color</label>
+    <input type="color" value="${hex}" onchange="setColor('${field}',this.value)">
+    <input type="number" min="0" max="255" style="width:48px" value="${alpha}" title="Alpha" onchange="setAlpha('${field}',+this.value)">
+    <button class="pr-btn" onclick="saveColor('${el[field]||'#ffffff'}')" title="Save to palette">+</button>
+  </div>
+  <div class="pr"><label></label><div class="palette-row">${pal}</div></div>
+  </div>`;
+}
+
+function snapH(dir){
+  const el=elems.find(e=>e.id===selId); if(!el)return;
+  if(dir==='left') el.x=0;
+  else if(dir==='center') el.x=Math.round((CW-el.w)/2);
+  else el.x=CW-el.w;
+  document.getElementById(selId).style.left=el.x+'px';
+  updPosInputs(el);
+}
+function snapV(dir){
+  const el=elems.find(e=>e.id===selId); if(!el)return;
+  if(dir==='top') el.y=0;
+  else if(dir==='mid') el.y=Math.round((CH-el.h)/2);
+  else el.y=CH-el.h;
+  document.getElementById(selId).style.top=el.y+'px';
+  updPosInputs(el);
+}
+function reloadImg(id){
+  const el=elems.find(e=>e.id===id); if(!el)return;
+  pick('image/png,image/jpeg,image/gif',f=>{
+    const r=new FileReader();
+    r.onload=e2=>{el.data=e2.target.result;el.file=f;el.filename=f.name;renderEl(el);renderProps(el);};
+    r.readAsDataURL(f);
+  });
+}
+
+// ── LAYERS ────────────────────────────────────────────────────────────────
+function refreshLayers(){
+  const ll=$('ll'); ll.innerHTML='';
+  const sorted=[...elems].sort((a,b)=>b.z-a.z);
+  const typeIcon={text:'lt-t',static:'lt-s',clock:'lt-t',date:'lt-t',weekday:'lt-t',bar:'lt-b',ring:'lt-r',linegraph:'lt-l',rect:'lt-d',image:'lt-i'};
+  const typeLabel={text:'val',static:'txt',clock:'clk',date:'dte',weekday:'day',bar:'bar',ring:'rng',linegraph:'grph',rect:'rect',image:'img'};
+  for(const el of sorted){
+    const name=el.type==='static'?(el.customText||'Label'):el.type==='image'?(el.filename||'image'):(sensorLabel(el.sensorKey)||el.type);
+    const div=document.createElement('div');
+    div.className='lr'+(el.id===selId?' active':'');
+    div.dataset.id=el.id;
+    div.innerHTML=`<span class="lrz">${el.z}</span>
+      <span class="ltb ${typeIcon[el.type]||'lt-s'}">${typeLabel[el.type]||el.type}</span>
+      <span class="lrn">${name}</span>
+      <span class="lrv" onclick="event.stopPropagation();toggleVis('${el.id}')" title="Toggle visibility">${el.visible?'👁':'🚫'}</span>
+      <span class="lrd" onclick="event.stopPropagation();deleteEl('${el.id}')" title="Delete">✕</span>`;
+    div.addEventListener('click',()=>sel(el.id));
+    ll.appendChild(div);
+  }
+}
+function toggleVis(id){
+  const el=elems.find(e=>e.id===id); if(!el)return;
+  el.visible=!el.visible;
+  document.getElementById(id).style.display=el.visible?'':'none';
+  refreshLayers();
+}
+function deleteEl(id){
+  elems=elems.filter(e=>e.id!==id);
+  const d=document.getElementById(id); if(d)d.remove();
+  if(selId===id){selId=null;renderProps(null);}
+  refreshLayers(); updStatus();
+}
+
+// ── STATUS ────────────────────────────────────────────────────────────────
+function updStatus(){
+  $('ssel').textContent=elems.length+' element'+(elems.length!==1?'s':'');
+  const el=elems.find(e=>e.id===selId);
+  $('sinfo').textContent=el?`${el.type} @ (${Math.round(el.x)},${Math.round(el.y)}) ${el.w}×${el.h}`:'Nothing selected';
+}
+
+// ── CLEAR ─────────────────────────────────────────────────────────────────
+function clearAll(){
+  if(!confirm('Clear all elements?')) return;
+  elems=[]; selId=null; backData=null;
+  $('canvas').querySelectorAll('.ce').forEach(d=>d.remove());
+  $('backImg').style.display='none'; $('backImg').src='';
+  $('backVid').style.display='none'; $('backVid').src='';
+  refreshLayers(); renderProps(null); updStatus(); toast('Canvas cleared');
+}
+
+// ── TOGGLE GROUPS ─────────────────────────────────────────────────────────
+function toggleGrp(title){
+  const items=title.nextElementSibling;
+  const open=items.style.display!=='none';
+  items.style.display=open?'none':'';
+  title.textContent=title.textContent.replace(open?'▾':'▸',open?'▸':'▾');
+}
+
+// ── SENSOR MAP DIALOG ─────────────────────────────────────────────────────
+function openSensorMap(){
+  const rows=Object.entries(sensorMap).map(([key,idx])=>`
+    <tr>
+      <td style="color:var(--text)">${SEN[key]?.l||key}</td>
+      <td><code style="font-size:10px;color:var(--muted)">${key}</code></td>
+      <td><input type="number" min="0" max="99" value="${idx??''}" placeholder="—" data-key="${key}" style="width:60px;background:var(--panel2);border:1px solid var(--border);color:var(--text);padding:2px 5px;border-radius:3px;font-size:11px;text-align:center"></td>
+    </tr>`).join('');
+  const modal=document.createElement('div');
+  modal.className='mbg';
+  modal.innerHTML=`<div class="modal" style="max-width:480px">
+    <h2>⚙ HWiNFO64 Sensor Map</h2>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:12px">Enter the registry index (ValueRaw<b>N</b>) for each sensor from your HWiNFO64 Gadget settings. Leave blank if not available.</p>
+    <table class="sensor-map-table"><thead><tr><th>Sensor</th><th>Key</th><th>Index</th></tr></thead><tbody>${rows}</tbody></table>
+    <div class="mbtns">
+      <button class="btn" onclick="this.closest('.mbg').remove()">Cancel</button>
+      <button class="btn primary" onclick="saveSensorMap(this.closest('.mbg'))">Save</button>
+    </div>
+  </div>`;
+  document.body.appendChild(modal);
+}
+function saveSensorMap(mbg){
+  mbg.querySelectorAll('input[data-key]').forEach(inp=>{
+    const v=inp.value.trim();
+    sensorMap[inp.dataset.key]=v===''?null:parseInt(v);
+  });
+  mbg.remove(); toast('Sensor map saved');
+}
+
+// ── EXPORT ────────────────────────────────────────────────────────────────
+async function exportTheme(){
+  const name=$('themeName').value.trim()||'MyTheme';
+  const theme={
+    name,width:CW,height:CH,
+    background:'#111114',
+    sensorMap,
+    themeColors,
+    elements:elems.map(el=>{
+      const e={...el};
+      delete e.data; delete e.file; // strip binary data — saved separately
+      return e;
+    })
+  };
+
+  const zip=new JSZip();
+  zip.file(name+'.ds916theme', JSON.stringify(theme,null,2));
+
+  // Background
+  if(backData?.file){
+    const ext=backData.name.split('.').pop().toLowerCase();
+    zip.file('back.'+ext, backData.file);
+  }
+
+  // Image layers
+  for(const el of elems.filter(e=>e.type==='image'&&e.file)){
+    zip.file(el.filename||'layer.png', el.file);
+  }
+
+  const blob=await zip.generateAsync({type:'blob',compression:'DEFLATE',compressionOptions:{level:6}});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a'); a.href=url; a.download=name+'.zip'; a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  toast('Exported: '+name+'.zip');
+}
+
+// ── IMPORT ────────────────────────────────────────────────────────────────
+async function importTheme(){
+  pick('.zip,.ds916theme',async f=>{
+    try{
+      if(f.name.endsWith('.ds916theme')){
+        const txt=await f.text();
+        loadThemeJson(JSON.parse(txt),{});
+      } else {
+        const zip=await JSZip.loadAsync(f);
+        const imageMap={};
+        // Load all image files
+        for(const [name,entry] of Object.entries(zip.files)){
+          if(/\.(png|jpg|jpeg|gif|mp4|avi|wmv)$/i.test(name)&&!entry.dir){
+            const ab=await entry.async('arraybuffer');
+            const ext=name.split('.').pop().toLowerCase();
+            const mime=ext==='jpg'||ext==='jpeg'?'image/jpeg':ext==='png'?'image/png':ext==='gif'?'image/gif':'video/mp4';
+            const blob=new Blob([ab],{type:mime});
+            imageMap[name.toLowerCase()]=URL.createObjectURL(blob);
+          }
+        }
+        // Find theme JSON
+        const themeFile=Object.keys(zip.files).find(n=>n.endsWith('.ds916theme'));
+        if(themeFile){
+          const txt=await zip.files[themeFile].async('string');
+          loadThemeJson(JSON.parse(txt),imageMap);
+        } else {
+          toast('No .ds916theme file found in ZIP','error');
+        }
+      }
+    }catch(e){toast('Import error: '+e.message);}
+  });
+}
+function loadThemeJson(theme,imageMap){
+  clearAll();
+  if(theme.sensorMap) sensorMap={...sensorMap,...theme.sensorMap};
+  if(theme.themeColors) themeColors=theme.themeColors;
+  $('themeName').value=theme.name||'MyTheme';
+  setOri(theme.width>theme.height?'horizontal':'vertical');
+
+  for(const el of (theme.elements||[])){
+    // Restore image data from imageMap
+    if(el.type==='image'&&el.filename){
+      el.data=imageMap[el.filename.toLowerCase()]||null;
+    }
+    elems.push(el);
+    renderEl(el);
+    nid=Math.max(nid,parseInt(el.id.replace('el_',''))+1);
+    nz=Math.max(nz,el.z+1);
+  }
+
+  // Restore background
+  const backKey=Object.keys(imageMap).find(k=>/^back\.(png|jpg|jpeg|gif|mp4|avi|wmv)$/i.test(k));
+  if(backKey){
+    const isVid=/\.(mp4|avi|wmv)$/i.test(backKey);
+    backData={name:backKey,isVideo:isVid,data:imageMap[backKey]};
+    showBg(imageMap[backKey],backKey,isVid);
+  }
+
+  refreshLayers(); updStatus(); setTimeout(()=>chZoom(0),100);
+  toast('Theme loaded: '+theme.name);
+}
+
+// ── INIT ──────────────────────────────────────────────────────────────────
+setOri('vertical');
+setTimeout(()=>chZoom(0),100);
+refreshLayers(); updStatus();
+</script>
+</body>
+</html>
