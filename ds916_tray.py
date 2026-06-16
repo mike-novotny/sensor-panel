@@ -215,6 +215,16 @@ def render_frame(theme, sensors):
     H = theme.get('height', 1920)
     bg = color_rgb(theme.get('background','#111114ff'))
     img = Image.new('RGB', (W, H), bg)
+
+    # Composite background image if present
+    bg_pil = theme.get('_background_image')
+    if bg_pil:
+        try:
+            resized = bg_pil.resize((W, H), Image.LANCZOS).convert('RGB')
+            img.paste(resized, (0, 0))
+        except Exception as e:
+            print(f'Background image error: {e}')
+
     draw = ImageDraw.Draw(img, 'RGBA')
     now = datetime.now()
 
@@ -405,28 +415,47 @@ _current_theme_path = ''
 def load_theme(path):
     global _current_theme, _current_theme_path
     try:
-        import zipfile
+        import zipfile, base64
         if path.endswith('.zip'):
             with zipfile.ZipFile(path) as z:
-                # Find .ds916theme
                 tfile = next((n for n in z.namelist() if n.endswith('.ds916theme')), None)
                 if not tfile: return False
                 theme = json.loads(z.read(tfile).decode())
-                # Load images
+                # Load image layers from ZIP
                 for el in theme.get('elements',[]):
                     if el.get('type')=='image' and el.get('filename'):
-                        fname = el['filename']
                         try:
-                            data = z.read(fname)
+                            data = z.read(el['filename'])
                             el['_pil_image'] = PILImage.open(io.BytesIO(data)).convert('RGBA')
                         except: pass
-                # Load background
+                # Load background from ZIP
                 back = next((n for n in z.namelist() if n.lower().startswith('back.')), None)
                 if back:
                     data = z.read(back)
                     theme['_background_image'] = PILImage.open(io.BytesIO(data)).convert('RGBA')
         elif path.endswith('.ds916theme'):
-            with open(path) as f: theme = json.load(f)
+            with open(path, encoding='utf-8') as f: theme = json.load(f)
+            # Background is embedded as a data URL: "data:image/png;base64,..."
+            bg_data_url = theme.get('backgroundImage')
+            if bg_data_url and isinstance(bg_data_url, str) and ',' in bg_data_url:
+                try:
+                    header, b64 = bg_data_url.split(',', 1)
+                    img_bytes = base64.b64decode(b64)
+                    theme['_background_image'] = PILImage.open(io.BytesIO(img_bytes)).convert('RGBA')
+                    print(f'Background image loaded from embedded data ({len(img_bytes)//1024}KB)')
+                except Exception as e:
+                    print(f'Background image decode error: {e}')
+            # Image layers are also embedded as data URLs
+            for el in theme.get('elements', []):
+                if el.get('type') == 'image' and el.get('data'):
+                    try:
+                        du = el['data']
+                        if ',' in du:
+                            _, b64 = du.split(',', 1)
+                            img_bytes = base64.b64decode(b64)
+                            el['_pil_image'] = PILImage.open(io.BytesIO(img_bytes)).convert('RGBA')
+                    except Exception as e:
+                        print(f'Image layer decode error: {e}')
         else:
             return False
 
@@ -652,16 +681,45 @@ def update_tray_icon():
     theme_name = _current_theme.get('name','No theme') if _current_theme else 'No theme loaded'
     _tray.title = f'DS916 — {status}\n{theme_name}'
 
+# ── Main-thread dispatcher ────────────────────────────────────────────────────
+# pystray callbacks run on a background thread. tkinter dialogs MUST run on the
+# main thread. We use a queue + tk.after() poll to bridge the two safely.
+import queue
+_ui_queue = queue.Queue()
+_tk_root  = None   # set in main before run_tray()
+
+def _dispatch(fn, *args, **kwargs):
+    """Schedule fn(*args,**kwargs) to run on the main tk thread."""
+    _ui_queue.put((fn, args, kwargs))
+
+def _poll_ui_queue():
+    """Called every 100ms on the main tk thread to drain the queue."""
+    try:
+        while True:
+            fn, args, kwargs = _ui_queue.get_nowait()
+            fn(*args, **kwargs)
+    except queue.Empty:
+        pass
+    finally:
+        if _tk_root:
+            _tk_root.after(100, _poll_ui_queue)
+
+# ── Tray callbacks (run on pystray thread → dispatched to main thread) ────────
 def load_theme_dialog(icon=None, item=None):
-    import tkinter.filedialog as fd
-    root=tk.Tk(); root.withdraw()
-    path=fd.askopenfilename(title='Load DS916 Theme',
-                            filetypes=[('DS916 Theme','*.zip *.ds916theme'),('All','*.*')])
-    root.destroy()
+    _dispatch(_load_theme_dialog_main)
+
+def _load_theme_dialog_main():
+    from tkinter import filedialog
+    path = filedialog.askopenfilename(
+        parent=_tk_root,
+        title='Load DS916 Theme',
+        filetypes=[('DS916 Theme', '*.zip *.ds916theme'), ('All files', '*.*')]
+    )
     if path:
         if load_theme(path):
             if not _running: start_display()
             update_tray_icon()
+            print(f'Theme loaded and display started: {path}')
 
 def toggle_display(icon=None, item=None):
     if _running: stop_display()
@@ -670,18 +728,23 @@ def toggle_display(icon=None, item=None):
 
 def open_builder(icon=None, item=None):
     import webbrowser
-    # Look for theme_builder.html next to this exe/script
     exe_dir = os.path.dirname(sys.executable if getattr(sys,'frozen',False) else os.path.abspath(__file__))
     html = os.path.join(exe_dir, 'theme_builder.html')
     if os.path.exists(html):
         webbrowser.open('file:///'+html.replace('\\','/'))
     else:
-        messagebox.showwarning('DS916','theme_builder.html not found next to this exe.')
+        _dispatch(lambda: messagebox.showwarning('DS916',
+            'theme_builder.html not found next to this exe.\n\nPlace it in:\n'+exe_dir))
+
+def open_settings_tray(icon=None, item=None):
+    _dispatch(open_settings)
 
 def quit_app(icon=None, item=None):
     stop_display()
     if _tray: _tray.stop()
-    sys.exit(0)
+    if _tk_root:
+        try: _tk_root.quit()
+        except: pass
 
 def build_menu():
     disp_label = '⏹ Stop Display' if _running else '▶ Start Display'
@@ -692,7 +755,7 @@ def build_menu():
         Item('📂 Load Theme…', load_theme_dialog),
         Item('🎨 Open Theme Builder', open_builder),
         pystray.Menu.SEPARATOR,
-        Item('⚙ Settings…', lambda i,it: open_settings()),
+        Item('⚙ Settings…', open_settings_tray),
         pystray.Menu.SEPARATOR,
         Item('❌ Exit', quit_app),
     )
@@ -701,10 +764,18 @@ def run_tray():
     global _tray
     icon_img = make_tray_icon()
     _tray = pystray.Icon(APP_NAME, icon_img, 'DS916 Screen Manager', menu=build_menu())
-    _tray.run()
+    # Run pystray on its own thread so the main thread stays free for tk
+    t = threading.Thread(target=_tray.run, daemon=True)
+    t.start()
 
 # ── Main ──────────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
+    # Create a hidden tk root on the MAIN thread — must happen before anything
+    # that needs dialogs.  All file dialogs and message boxes use this root.
+    _tk_root = tk.Tk()
+    _tk_root.withdraw()          # keep it invisible
+    _tk_root.after(100, _poll_ui_queue)   # start queue polling
+
     # Try shared memory if configured
     if cfg.get('hwinfo_source') == 'sharedmem':
         if not try_open_sharedmem():
@@ -720,5 +791,11 @@ if __name__ == '__main__':
         if load_theme(cfg['theme_path']):
             start_display()
 
-    # Run tray (blocks until exit)
+    # Start tray icon on background thread
     run_tray()
+
+    # Main thread runs tk event loop (handles dialogs safely)
+    try:
+        _tk_root.mainloop()
+    except KeyboardInterrupt:
+        quit_app()

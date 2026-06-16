@@ -125,36 +125,43 @@ sensor-panel/
 ## Features
 
 ### Theme Builder (`theme_builder.html`)
-- **Visual drag-and-drop editor** — same look and feel as the Jonsbo theme builder
+- **Visual drag-and-drop editor** — open directly in Chrome or Edge, no install required
 - **Element types:**
   - Clock (12h/24h, with/without seconds)
-  - Date (fully configurable format: DD-MM-YYYY, MM/DD/YYYY, MMMM DD YYYY, etc.)
+  - Date (fully configurable format: DD-MM-YYYY, MM/DD/YYYY, MMMM DD YYYY, custom, etc.)
   - Day of Week (full or abbreviated)
-  - Sensor value text (with prefix/suffix)
+  - Sensor value text (with prefix/suffix, auto-sizes to content)
   - Horizontal progress bar
   - Ring gauge
-  - Line graph (scrolling history)
+  - Line graph (scrolling history with configurable window)
   - Static label
   - Rectangle / divider
-  - Image layer
-- **Sensors supported:** CPU usage/temp/fan, GPU usage/temp/fans, RAM usage, motherboard temp, chassis fans, network up/down
+  - Image layer (PNG, JPG, GIF)
+- **Preset elements** — drop a "CPU Usage Preset" to instantly place a label + value + bar group
+- **Font support:**
+  - Built-in system fonts (Consolas, Arial, Segoe UI, etc.)
+  - 🔍 **System Fonts** button loads all fonts installed on your PC (Chrome/Edge only, uses `queryLocalFonts()`)
+  - 📁 **Font File** button loads any `.ttf` or `.otf` file for live preview and export
+- **Sensors supported:** CPU usage/temp/fan/frequency/power/voltage, GPU usage/temp/fans/VRAM/clock/power, RAM usage, motherboard temp, chassis fans, storage, network, battery
+- **Configurable sensor palette** — only commonly used sensors shown by default; click **＋ Sensors** to add any sensor to the palette with checkboxes
 - **Color picker** with alpha channel + saved palette swatches per theme
-- **Snap-to-grid** and alignment tools (center, edge snap, element-to-element align)
+- **Snap-to-grid** and alignment tools (center, edge snap, element-to-element snap)
+- **Smart resize** — drag the handle on text elements to scale font size; drag on bars/graphs/rings to resize the widget
 - **Layers panel** with visibility toggle and z-order control
-- **Background support:** PNG, JPG, GIF, MP4, AVI, WMV
-- **Import/Export** as `.zip` (theme JSON + all assets bundled)
-- Works entirely in the browser — no install required
+- **Background support:** PNG, JPG, GIF — embedded into the theme file on export
+- **Import/Export** as a single `.ds916theme` file (JSON with all assets embedded as base64)
 
 ### Tray Renderer (`ds916_tray.py` / `DS916Tray.exe`)
 - Runs silently in the Windows **system tray**
 - **Auto-starts with Windows** and loads the last used theme automatically
 - Right-click tray menu: Start/Stop display, Load Theme, Open Builder, Settings, Exit
-- **HWiNFO64 integration** via Windows Registry (VSB gadget mode) — no usage limit
+- **HWiNFO64 integration** via Windows Registry (VSB gadget mode) — no time limit
 - Optional **HWiNFO64 shared memory** mode for richer sensor access (requires HWiNFO Pro or restart every 12h on free version)
-- Auto-fallback: tries shared memory first, falls back to registry
+- Auto-fallback: tries shared memory first, falls back to registry automatically
 - **Sensor mapping UI** — configure which HWiNFO registry index maps to which sensor key
 - **Line graph history** buffers maintained per-element across frames
-- Configurable COM port, FPS, and JPEG quality
+- Background images composited before drawing elements
+- Configurable COM port and FPS
 
 ---
 
@@ -279,28 +286,22 @@ The `MSDISPLAYSDKWRRAPER.dll` is the PC-side SDK wrapper provided by ArtInChip. 
 
 ## Theme File Format
 
-Themes are exported as `.zip` files containing:
+Themes are saved as a single **`.ds916theme`** file — a JSON document with all assets (background image, custom fonts, image layers) embedded as base64 data URLs. No ZIP, no separate asset folders.
 
-```
-ThemeName.zip
-├── ThemeName.ds916theme    # JSON theme definition
-├── back.png / back.mp4     # Background image or video (optional)
-└── layer_name.png          # Any image layers (optional)
-```
-
-The `.ds916theme` JSON format:
 ```json
 {
   "name": "MyTheme",
   "width": 462,
   "height": 1920,
-  "background": "#111114ff",
+  "background": "#111114",
+  "backgroundImage": "data:image/png;base64,...",
   "sensorMap": {
     "CPU_USAGE": 0,
     "CPU_TEMP": 1,
     "GPU_USAGE": 9
   },
   "themeColors": ["#00b4ffff", "#ff0000ff"],
+  "visibleSensors": ["CLOCK","DATE","CPU_USAGE","CPU_TEMP"],
   "elements": [
     {
       "id": "el_1",
@@ -315,7 +316,8 @@ The `.ds916theme` JSON format:
       "fontFamily": "Consolas",
       "bold": true,
       "color": "#ffffffff",
-      "align": "center"
+      "align": "center",
+      "manualSize": false
     }
   ]
 }
@@ -328,13 +330,15 @@ The `.ds916theme` JSON format:
 | `clock` | Live time display | `clockFormat` (12h/24h), `clockSeconds` |
 | `date` | Live date display | `dateFormat` (DD-MM-YYYY etc.) |
 | `weekday` | Day of week | `weekdayFormat` (full/short) |
-| `text` | Sensor value | `sensorKey`, `prefix`, `unit` |
-| `static` | Fixed label | `customText` |
+| `text` | Sensor value | `sensorKey`, `prefix`, `unit`, `manualSize` |
+| `static` | Fixed label | `customText`, `manualSize` |
 | `bar` | Progress bar | `sensorKey`, `maxValue`, `fillColor`, `bgColor` |
 | `ring` | Ring gauge | `sensorKey`, `maxValue`, `arcColor`, `trackColor`, `ringWidth` |
 | `linegraph` | Scrolling graph | `sensorKey`, `maxValue`, `lineColor`, `historySeconds` |
-| `rect` | Rectangle | `fillColor`, `cornerRadius` |
-| `image` | Image overlay | `filename` |
+| `rect` | Rectangle/divider | `fillColor`, `cornerRadius` |
+| `image` | Image overlay | `data` (base64 data URL) |
+
+> **`manualSize`**: when `false` (default for text elements), the selection box auto-sizes to the rendered text. When `true`, width/height are fixed. Dragging the resize handle on a text element scales the font size; the box follows automatically.
 
 ### Sensor Keys
 
