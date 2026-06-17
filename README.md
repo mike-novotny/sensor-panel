@@ -2,7 +2,7 @@
 
 A fully open-source sensor panel system for the **Jonsbo DS916** (and compatible ArtInChip-based USB LCD screens), built by reverse-engineering the device's USB protocol from scratch.
 
-Design custom themes visually, stream live hardware sensor data from HWiNFO64, and run everything silently in the background — no proprietary software required.
+Design custom themes visually, stream live hardware sensor data from HWiNFO64, and run everything silently in the background — no proprietary software required. Don't want to design from scratch? The built-in **✨ AI Theme Generator** can build a complete, good-looking theme for you in one click.
 
 > This project relies entirely on [HWiNFO64](https://www.hwinfo.com) for sensor data. If you find this useful, please consider a [HWiNFO Pro license](https://www.hwinfo.com/buy/) — it removes the shared memory time limit and supports the developer of the tool this whole project is built on.
 
@@ -355,6 +355,32 @@ Each color field has a color picker, an alpha (0-255) transparency field, a **+*
 
 - **💾 Save Theme** — saves a single `.ds916theme` file with all assets (background, fonts, image layers) embedded as base64. The file picker defaults to `%APPDATA%\DS916Tray\Themes\` after first use
 - **📂 Import** — loads a `.ds916theme` file. The file picker remembers the Themes folder
+
+---
+
+## ✨ AI Theme Generator
+
+Don't want to design a theme by hand? Click **✨ AI Generate** in the top bar to instantly build a complete, good-looking theme — no design skills required.
+
+This is a fully offline, rule-based generator (no internet connection, no API calls, no cost). It works by combining:
+
+- **12 curated visual styles** ("vibes"), each with its own color palette, font, corner-radius personality, and a procedurally generated SVG background (gradients, starfields, scanlines, grid horizons, aurora bands, etc. — all drawn in code, no external image files)
+- **7 distinct layout templates** (4 vertical, 3 horizontal), covering different arrangements: ring gauges up top, stacked progress bars, a featured line graph, or a clean single column
+- **Randomization** — every time you generate, the layout template, sensor display types (ring vs. bar), color tone, and element ordering vary slightly, so generating twice with the same vibe won't produce an identical result
+
+### How to Use It
+
+1. Click **✨ AI Generate**
+2. Choose **vertical** or **horizontal** orientation
+3. Click a vibe thumbnail — Space, Cyberpunk, Minimal, Nature, Racing, Anime, Synthwave, Industrial, Ocean, Monochrome, Volcanic, or Aurora
+4. Check or uncheck sensors in the list (a sensible default selection is pre-checked: clock, date, CPU usage/temp/fan, GPU usage/temp, motherboard temp, and chassis fans)
+5. Click **Generate Theme**
+
+The canvas is populated instantly with a complete layout — clock, date, labeled ring gauges or bars for usage-type sensors, and label+value+bar rows for everything else. Every ring/bar/graph element includes a label so it's always clear which sensor it represents.
+
+From there, treat it like any other theme: drag elements to fine-tune positions, change colors, swap fonts, or just save it as-is with **💾 Save Theme**.
+
+> Generating again will clear the current canvas (you'll be asked to confirm), so if you like a particular result, save it before trying another vibe or generating again.
 
 ---
 

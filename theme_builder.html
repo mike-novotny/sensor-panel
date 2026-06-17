@@ -124,6 +124,20 @@ select option{background:#1f1f25}
 .sen-item:hover{background:var(--panel2)}
 .sen-item input[type=checkbox]{flex-shrink:0;cursor:pointer}
 .sen-item label{font-size:11px;cursor:pointer;flex:1}
+
+/* AI Theme Generator */
+.ai-vibe-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:4px}
+.ai-vibe{border:2px solid var(--border);border-radius:8px;overflow:hidden;cursor:pointer;transition:border-color .15s;background:var(--panel2)}
+.ai-vibe:hover{border-color:#444}
+.ai-vibe.sel{border-color:var(--accent)}
+.ai-vibe-prev{width:100%;height:60px;overflow:hidden}
+.ai-vibe-prev svg{width:100%;height:100%;display:block}
+.ai-vibe-label{font-size:10px;text-align:center;padding:4px 2px;color:var(--text)}
+.ai-sensor-grid{display:grid;grid-template-columns:1fr 1fr;gap:0;max-height:220px;overflow-y:auto;border:1px solid var(--border);border-radius:6px}
+.ai-sensor-row{display:flex;align-items:center;gap:7px;padding:5px 10px;border-bottom:1px solid rgba(255,255,255,.03)}
+.ai-sensor-row:hover{background:var(--panel2)}
+.ai-sensor-row input{flex-shrink:0;cursor:pointer}
+.ai-sensor-row label{font-size:11px;cursor:pointer;flex:1}
 </style>
 </head>
 <body>
@@ -145,6 +159,7 @@ select option{background:#1f1f25}
   <div class="sep"></div>
   <button class="btn" onclick="openSensorMap()">⚙ Sensor Map</button>
   <button class="btn" onclick="importSensorList()">🔍 Sensors</button>
+  <button class="btn primary" onclick="openAiGenerate()" style="background:linear-gradient(90deg,#a070d0,#00b4ff);border:none;color:#fff">✨ AI Generate</button>
   <div class="sep"></div>
   <button class="btn danger" onclick="clearAll()">Clear</button>
   <button class="btn" onclick="importTheme()">📂 Import</button>
@@ -1099,13 +1114,18 @@ function updStatus(){
   const el=elems.find(e=>e.id===selId);
   $('sinfo').textContent=el?`${el.type} @ (${Math.round(el.x)},${Math.round(el.y)}) ${Math.round(el.w||0)}\u00D7${Math.round(el.h||0)}`:'Nothing selected';
 }
-function clearAll(){
-  if(!confirm('Clear all elements?'))return;
+function clearAllSilent(){
+  elems.forEach(e=>{const d=document.getElementById(e.id);if(d){if(d._ro)d._ro.disconnect();d.remove();}});
   elems=[];selId=null;backData=null;
   $('canvas').querySelectorAll('.ce').forEach(d=>d.remove());
   $('backImg').style.display='none';$('backImg').src='';
   $('backVid').style.display='none';$('backVid').src='';
-  refreshLayers();renderProps(null);updStatus();toast('Cleared');
+  refreshLayers();renderProps(null);updStatus();
+}
+function clearAll(){
+  if(!confirm('Clear all elements?'))return;
+  clearAllSilent();
+  toast('Cleared');
 }
 
 // ── SENSOR MAP ────────────────────────────────────────────────────────────────
@@ -1368,6 +1388,617 @@ function promptSensorImport(){
   </div>`;
   document.body.appendChild(modal);
 }
+
+// ── AI THEME GENERATOR (rule-based, no external API, offline) ────────────────
+// Twelve curated "vibes" each defining colors, fonts, decoration style, and a
+// procedurally generated SVG gradient background. The layout engine places
+// clock/date + selected sensors using a deterministic grid algorithm so
+// results are reliable, overlap-free, and reproducible.
+
+const VIBES = {
+  space: {
+    label:'🌌 Space', accent:'#5ec8ffff', accent2:'#a070d0ff', text:'#ffffffff',
+    sub:'#8899bbff', font:'Consolas', corner:6,
+    bg:(W,H)=>radialBg(W,H,['#05050f','#0a0a22','#000000'],starfield(W,H,80))
+  },
+  cyberpunk: {
+    label:'🌆 Cyberpunk', accent:'#ff2e9aff', accent2:'#00f0ffff', text:'#ffffffff',
+    sub:'#ff2e9aaa', font:'Impact', corner:0,
+    bg:(W,H)=>linearBg(W,H,['#000000','#1a0022','#220011'],135,scanlines(W,H))
+  },
+  minimal: {
+    label:'◻ Minimal', accent:'#4b8fe0ff', accent2:'#4b8fe0ff', text:'#f0f0f0ff',
+    sub:'#777777ff', font:'Segoe UI', corner:2,
+    bg:(W,H)=>flatBg(W,H,'#15151a')
+  },
+  nature: {
+    label:'🌿 Nature', accent:'#e0a84bff', accent2:'#6fbf5fff', text:'#f5f0e0ff',
+    sub:'#a9c79aff', font:'Georgia', corner:14,
+    bg:(W,H)=>linearBg(W,H,['#0c1f12','#16321c','#0a1a0f'],180)
+  },
+  racing: {
+    label:'🏁 Racing', accent:'#ff3030ff', accent2:'#ffffffff', text:'#ffffffff',
+    sub:'#ff8080aa', font:'Impact', corner:0,
+    bg:(W,H)=>diagonalBg(W,H,['#0a0a0a','#1a0000','#000000'],stripes(W,H))
+  },
+  anime: {
+    label:'🎀 Anime', accent:'#ff7ad9ff', accent2:'#7adfffff', text:'#ffffffff',
+    sub:'#ffc0e8ff', font:'Verdana', corner:20,
+    bg:(W,H)=>radialBg(W,H,['#2a0a3a','#4a1a5a','#1a0030'],bubbles(W,H))
+  },
+  synthwave: {
+    label:'🌇 Synthwave', accent:'#ff3df0ff', accent2:'#3df0ffff', text:'#ffffffff',
+    sub:'#ff3df0aa', font:'Impact', corner:4,
+    bg:(W,H)=>linearBg(W,H,['#1a0033','#4a0050','#ff6020'],180,gridHorizon(W,H))
+  },
+  industrial: {
+    label:'⚙ Industrial', accent:'#ffa030ff', accent2:'#d0d0d0ff', text:'#f0f0f0ff',
+    sub:'#999999ff', font:'Courier New', corner:0,
+    bg:(W,H)=>flatBg(W,H,'#23262b',rivets(W,H))
+  },
+  ocean: {
+    label:'🌊 Ocean', accent:'#5ad0e0ff', accent2:'#ffffffff', text:'#e8f8ffff',
+    sub:'#9accd6ff', font:'Segoe UI', corner:18,
+    bg:(W,H)=>linearBg(W,H,['#001a2a','#003a52','#001018'],180,waves(W,H))
+  },
+  monochrome: {
+    label:'⚫ Monochrome', accent:'#ffffffff', accent2:'#888888ff', text:'#ffffffff',
+    sub:'#666666ff', font:'Arial', corner:0,
+    bg:(W,H)=>flatBg(W,H,'#000000')
+  },
+  volcanic: {
+    label:'🌋 Volcanic', accent:'#ff5020ff', accent2:'#ffb030ff', text:'#fff0e0ff',
+    sub:'#cc6633ff', font:'Impact', corner:0,
+    bg:(W,H)=>radialBg(W,H,['#1a0500','#330a00','#000000'],jaggedGlow(W,H))
+  },
+  aurora: {
+    label:'🌠 Aurora', accent:'#5effc0ff', accent2:'#a070ffff', text:'#ffffffff',
+    sub:'#88ddccff', font:'Segoe UI', corner:10,
+    bg:(W,H)=>flatBg(W,H,'#04060aff',auroraBands(W,H))
+  },
+};
+
+// ── SVG background generators (no external assets, all procedural) ──────────
+function svgWrap(W,H,defs,body){
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">${defs||''}${body}</svg>`;
+}
+function flatBg(W,H,color,extra=''){
+  return svgWrap(W,H,'',`<rect width="${W}" height="${H}" fill="${color}"/>${extra}`);
+}
+function linearBg(W,H,colors,angle=180,extra=''){
+  const id='lg'+Math.random().toString(36).slice(2,8);
+  const stops=colors.map((c,i)=>`<stop offset="${(i/(colors.length-1)*100).toFixed(0)}%" stop-color="${c}"/>`).join('');
+  const rad=angle*Math.PI/180;
+  const x2=(50+50*Math.sin(rad)).toFixed(0), y2=(50-50*Math.cos(rad)).toFixed(0);
+  const x1=(50-50*Math.sin(rad)).toFixed(0), y1=(50+50*Math.cos(rad)).toFixed(0);
+  return svgWrap(W,H,`<defs><linearGradient id="${id}" x1="${x1}%" y1="${y1}%" x2="${x2}%" y2="${y2}%">${stops}</linearGradient></defs>`,
+    `<rect width="${W}" height="${H}" fill="url(#${id})"/>${extra}`);
+}
+function radialBg(W,H,colors,extra=''){
+  const id='rg'+Math.random().toString(36).slice(2,8);
+  const stops=colors.map((c,i)=>`<stop offset="${(i/(colors.length-1)*100).toFixed(0)}%" stop-color="${c}"/>`).join('');
+  return svgWrap(W,H,`<defs><radialGradient id="${id}" cx="50%" cy="35%" r="75%">${stops}</radialGradient></defs>`,
+    `<rect width="${W}" height="${H}" fill="url(#${id})"/>${extra}`);
+}
+function diagonalBg(W,H,colors,extra=''){ return linearBg(W,H,colors,135,extra); }
+function starfield(W,H,n){
+  let s='';
+  for(let i=0;i<n;i++){
+    const x=Math.random()*W,y=Math.random()*H,r=Math.random()*1.6+0.3,o=(Math.random()*0.6+0.3).toFixed(2);
+    s+=`<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r.toFixed(1)}" fill="#fff" opacity="${o}"/>`;
+  }
+  return s;
+}
+function scanlines(W,H){
+  let s='';
+  for(let y=0;y<H;y+=6) s+=`<line x1="0" y1="${y}" x2="${W}" y2="${y}" stroke="#ff2e9a" stroke-width="0.5" opacity="0.05"/>`;
+  return s;
+}
+function stripes(W,H){
+  let s='';
+  for(let i=-2;i<6;i++){
+    const x=i*W/3;
+    s+=`<polygon points="${x},${H} ${x+W*0.15},${H} ${x+W*0.4},0 ${x+W*0.25},0" fill="#ffffff" opacity="0.04"/>`;
+  }
+  return s;
+}
+function bubbles(W,H){
+  let s='';
+  for(let i=0;i<14;i++){
+    const x=Math.random()*W,y=Math.random()*H,r=Math.random()*40+10;
+    s+=`<circle cx="${x.toFixed(0)}" cy="${y.toFixed(0)}" r="${r.toFixed(0)}" fill="#ffffff" opacity="0.04"/>`;
+  }
+  return s;
+}
+function gridHorizon(W,H){
+  let s='';
+  const hy=H*0.62;
+  for(let i=0;i<14;i++){
+    const sx=W/2+(i-7)*W*0.12;
+    s+=`<line x1="${W/2}" y1="${hy}" x2="${sx}" y2="${H}" stroke="#3df0ff" stroke-width="1" opacity="0.25"/>`;
+  }
+  for(let i=0;i<8;i++){
+    const ly=hy+(H-hy)*(i/8)*(i/8);
+    s+=`<line x1="0" y1="${ly.toFixed(0)}" x2="${W}" y2="${ly.toFixed(0)}" stroke="#3df0ff" stroke-width="1" opacity="0.2"/>`;
+  }
+  s+=`<circle cx="${W/2}" cy="${hy}" r="${W*0.32}" fill="#ff6020" opacity="0.18"/>`;
+  return s;
+}
+function rivets(W,H){
+  let s='';
+  for(let y=20;y<H;y+=80) for(let x=20;x<W;x+=80)
+    s+=`<circle cx="${x}" cy="${y}" r="2" fill="#000" opacity="0.3"/>`;
+  return s;
+}
+function waves(W,H){
+  let s='';
+  for(let i=0;i<4;i++){
+    const y=H*0.5+i*H*0.12;
+    s+=`<path d="M0,${y} Q${W*0.25},${y-25} ${W*0.5},${y} T${W},${y}" stroke="#5ad0e0" stroke-width="2" fill="none" opacity="${0.15-i*0.03}"/>`;
+  }
+  return s;
+}
+function jaggedGlow(W,H){
+  return `<polygon points="0,${H} ${W*0.3},${H*0.7} ${W*0.5},${H*0.85} ${W*0.7},${H*0.65} ${W},${H} 0,${H}" fill="#ff5020" opacity="0.15"/>`;
+}
+function auroraBands(W,H){
+  let s='';
+  const colors=['#5effc0','#a070ff','#5effc0'];
+  for(let i=0;i<3;i++){
+    const yOff=H*0.15+i*H*0.08;
+    s+=`<path d="M0,${yOff} Q${W*0.3},${yOff-60} ${W*0.6},${yOff+20} T${W},${yOff-10} L${W},0 L0,0 Z" fill="${colors[i]}" opacity="0.08"/>`;
+  }
+  return s;
+}
+
+// ── Sensor defaults for auto-pick ────────────────────────────────────────────
+const AI_DEFAULT_SENSORS=[
+  {key:'CLOCK',  type:'clock'},
+  {key:'DATE',   type:'date'},
+  {key:'CPU_USAGE', type:'ring'},
+  {key:'CPU_TEMP',  type:'text'},
+  {key:'CPU_FAN',   type:'text'},
+  {key:'GPU_USAGE', type:'ring'},
+  {key:'GPU_TEMP',  type:'text'},
+  {key:'MB_TEMP',   type:'text'},
+  {key:'CHASSIS_FAN1', type:'text'},
+  {key:'CHASSIS_FAN2', type:'text'},
+];
+
+let aiSelectedSensors=new Map(AI_DEFAULT_SENSORS.map(s=>[s.key,s.type]));
+let aiSelectedVibe='space';
+
+function openAiGenerate(){
+  const m=document.createElement('div');m.className='mbg';
+  const vibeGrid=Object.entries(VIBES).map(([k,v])=>{
+    const grad=v.bg(80,80);
+    const sel=k===aiSelectedVibe;
+    return `<div class="ai-vibe${sel?' sel':''}" data-vibe="${k}" onclick="selectAiVibe('${k}')" title="${v.label}">
+      <div class="ai-vibe-prev">${grad}</div>
+      <div class="ai-vibe-label">${v.label}</div>
+    </div>`;
+  }).join('');
+
+  const allKeys=Object.keys(SEN).filter(k=>!['CLOCK','CLOCKSEC','DATE','WEEKDAY'].includes(k));
+  const sensorRows=allKeys.map(k=>{
+    const checked=aiSelectedSensors.has(k);
+    return `<div class="ai-sensor-row"><input type="checkbox" id="ai_${k}" ${checked?'checked':''} onchange="toggleAiSensor('${k}')"><label for="ai_${k}">${SEN[k].l}</label></div>`;
+  }).join('');
+
+  m.innerHTML=`<div class="modal" style="max-width:640px;display:flex;flex-direction:column;max-height:88vh">
+    <h2 style="flex-shrink:0">✨ AI Theme Generator</h2>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:10px;flex-shrink:0">Pick a vibe and sensors — a complete layout, color palette, and background will be generated instantly.</p>
+    <div style="flex:1;overflow-y:auto;min-height:0">
+      <div class="pt" style="padding-left:0">Orientation</div>
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="ob${ori==='vertical'?' active':''}" id="ai_ori_v" onclick="setOri('vertical');document.getElementById('ai_ori_v').classList.add('active');document.getElementById('ai_ori_h').classList.remove('active')">▯ Vertical</button>
+        <button class="ob${ori==='horizontal'?' active':''}" id="ai_ori_h" onclick="setOri('horizontal');document.getElementById('ai_ori_h').classList.add('active');document.getElementById('ai_ori_v').classList.remove('active')">▭ Horizontal</button>
+      </div>
+      <div class="pt" style="padding-left:0">Vibe</div>
+      <div class="ai-vibe-grid">${vibeGrid}</div>
+      <div class="pt" style="padding-left:0;margin-top:10px">Sensors to include</div>
+      <div class="ai-sensor-grid">${sensorRows}</div>
+    </div>
+    <div class="mbtns" style="flex-shrink:0;border-top:1px solid var(--border);padding-top:12px;margin-top:8px">
+      <button class="btn" onclick="this.closest('.mbg').remove()">Cancel</button>
+      <button class="btn primary" style="background:linear-gradient(90deg,#a070d0,#00b4ff);border:none" onclick="runAiGenerate(this.closest('.mbg'))">✨ Generate Theme</button>
+    </div>
+  </div>`;
+  document.body.appendChild(m);
+}
+
+function selectAiVibe(key){
+  aiSelectedVibe=key;
+  document.querySelectorAll('.ai-vibe').forEach(el=>el.classList.toggle('sel',el.dataset.vibe===key));
+}
+function toggleAiSensor(key){
+  const cb=document.getElementById('ai_'+key);
+  if(cb.checked){
+    const s=SEN[key];
+    // Default type depends on sensor: usage-type sensors get a random
+    // pick among ring/bar/graph for variety; everything else is text
+    if(s.max!==null){
+      const opts=['ring','bar'];
+      aiSelectedSensors.set(key, opts[Math.floor(Math.random()*opts.length)]);
+    } else {
+      aiSelectedSensors.set(key, 'text');
+    }
+  } else {
+    aiSelectedSensors.delete(key);
+  }
+}
+
+function runAiGenerate(mbg){
+  if(elems.length>0 && !confirm('This will replace all current elements. Continue?')){return;}
+  mbg.remove();
+  generateAiTheme(aiSelectedVibe, [...aiSelectedSensors.entries()]);
+}
+
+// Slightly shift a hex color's hue/lightness so repeat generations of the
+// same vibe aren't pixel-identical. Keeps shifts subtle (±12 degrees hue).
+function jitterColor(hex){
+  hex=hex.replace('#','');
+  const r=parseInt(hex.slice(0,2),16)/255, g=parseInt(hex.slice(2,4),16)/255, b=parseInt(hex.slice(4,6),16)/255;
+  const a=hex.length>6?hex.slice(6,8):'ff';
+  let max=Math.max(r,g,b),min=Math.min(r,g,b),h,s,l=(max+min)/2;
+  const d=max-min;
+  if(d===0){h=0;s=0;}
+  else{
+    s=l>0.5?d/(2-max-min):d/(max+min);
+    if(max===r)h=((g-b)/d+(g<b?6:0));
+    else if(max===g)h=(b-r)/d+2;
+    else h=(r-g)/d+4;
+    h/=6;
+  }
+  h=(h+( (Math.random()-0.5)*24/360))%1; if(h<0)h+=1;
+  l=Math.max(0.15,Math.min(0.85,l+(Math.random()-0.5)*0.08));
+  const hue2rgb=(p,q,t)=>{if(t<0)t+=1;if(t>1)t-=1;if(t<1/6)return p+(q-p)*6*t;if(t<1/2)return q;if(t<2/3)return p+(q-p)*(2/3-t)*6;return p;};
+  let nr,ng,nb;
+  if(s===0){nr=ng=nb=l;}
+  else{
+    const q=l<0.5?l*(1+s):l+s-l*s, p=2*l-q;
+    nr=hue2rgb(p,q,h+1/3);ng=hue2rgb(p,q,h);nb=hue2rgb(p,q,h-1/3);
+  }
+  const toHex=v=>Math.round(v*255).toString(16).padStart(2,'0');
+  return '#'+toHex(nr)+toHex(ng)+toHex(nb)+a;
+}
+
+// ── Layout engine ─────────────────────────────────────────────────────────────
+function generateAiTheme(vibeKey, sensorList){
+  const baseVibe=VIBES[vibeKey];
+  // Clone vibe with slight randomized color variance so repeat generations differ
+  const vibe={...baseVibe,
+    accent:jitterColor(baseVibe.accent),
+    accent2:jitterColor(baseVibe.accent2)};
+  clearAllSilent();
+
+  // Background — set a fallback solid color immediately so something is
+  // visible even before/if the SVG blob finishes loading
+  const fallbackColors={
+    space:'#05050f',cyberpunk:'#1a0022',minimal:'#15151a',nature:'#16321c',
+    racing:'#1a0000',anime:'#2a0a3a',synthwave:'#1a0033',industrial:'#23262b',
+    ocean:'#003a52',monochrome:'#000000',volcanic:'#1a0500',aurora:'#04060a'
+  };
+  $('canvas').style.background=fallbackColors[vibeKey]||'#111114';
+
+  const svg=vibe.bg(CW,CH);
+  console.log('[AI Generate] SVG background length:', svg.length);
+  // Use a base64 data URL instead of a blob URL — displays more reliably
+  // and is already export-ready (matches the format used for uploaded images)
+  const url='data:image/svg+xml;base64,'+btoa(unescape(encodeURIComponent(svg)));
+  backData={name:'ai_'+vibeKey+'.svg',isVideo:false,data:url};
+  showBg(url,'ai_'+vibeKey+'.svg',false);
+  console.log('[AI Generate] Background data URL set, length:', url.length);
+
+  themeColors=[vibe.accent,vibe.accent2,vibe.text,vibe.sub];
+
+  const margin=Math.round(CW*0.06);
+  const usableW=CW-margin*2;
+  console.log('[AI Generate] Canvas:', CW, 'x', CH, 'margin:', margin, 'orientation:', ori);
+
+  if(ori==='vertical'){
+    layoutVertical(vibe, sensorList, margin, usableW);
+  } else {
+    layoutHorizontal(vibe, sensorList, margin, usableW);
+  }
+
+  console.log('[AI Generate] Elements created:', elems.length, elems.map(e=>e.type));
+
+  refreshLayers();updStatus();setTimeout(()=>chZoom(0),80);
+  toast(`✨ Generated "${vibe.label}" theme with ${sensorList.length} sensors`);
+}
+
+function mkClock(x,y,w,vibe){
+  const fs=Math.round(w*0.16);
+  const el={id:genId(),type:'clock',sensorKey:'',x,y,z:nextZ(),visible:true,
+    w,h:fs*1.3,fontSize:fs,fontFamily:vibe.font,color:vibe.text,bold:true,
+    align:'center',clockFormat:'12h',clockSeconds:false,manualSize:false};
+  elems.push(el);renderEl(el);
+  return el;
+}
+function mkDate(x,y,w,vibe){
+  const fs=Math.round(w*0.045);
+  const el={id:genId(),type:'date',sensorKey:'',x,y,z:nextZ(),visible:true,
+    w,h:fs*1.4,fontSize:fs,fontFamily:vibe.font,color:vibe.sub,bold:false,
+    align:'center',dateFormat:'DD MMMM, YYYY',manualSize:false};
+  elems.push(el);renderEl(el);
+  return el;
+}
+function mkLabel(x,y,w,text,vibe){
+  const fs=Math.max(12,Math.round(w*0.075));
+  const el={id:genId(),type:'static',sensorKey:'',x,y,z:nextZ(),visible:true,
+    customText:text.toUpperCase(),w,h:fs*1.3,fontSize:fs,fontFamily:vibe.font,
+    color:vibe.sub,bold:false,align:'left',manualSize:false};
+  elems.push(el);renderEl(el);
+  return el;
+}
+function mkRing(x,y,d,key,vibe){
+  const s=SEN[key];
+  // Label above the ring so it's clear which sensor this is
+  const lblFs=Math.max(11,Math.round(d*0.085));
+  const lbl={id:genId(),type:'static',sensorKey:'',x,y,z:nextZ(),visible:true,
+    customText:s.l.toUpperCase(),w:d,h:lblFs*1.4,fontSize:lblFs,fontFamily:vibe.font,
+    color:vibe.sub,bold:false,align:'center',manualSize:false};
+  elems.push(lbl);renderEl(lbl);
+  const ringY=y+lblFs*1.6;
+  const el={id:genId(),type:'ring',sensorKey:key,x,y:ringY,z:nextZ(),visible:true,
+    w:d,h:d,ringWidth:Math.round(d*0.09),maxValue:s.max||100,
+    arcColor:vibe.accent,trackColor:vibe.sub.slice(0,7)+'33',showLabel:true,
+    labelColor:vibe.text,labelFontSize:Math.round(d*0.22),labelFontFamily:vibe.font,
+    labelBold:true,unit:s.u||'',manualSize:true};
+  elems.push(el);renderEl(el);
+  return {h:lblFs*1.6+d, w:d};
+}
+function mkTextRow(x,y,w,key,vibe){
+  // label + value stacked compactly, with bar underneath if applicable
+  const fsLbl=Math.max(11,Math.round(w*0.07));
+  const fsVal=Math.max(16,Math.round(w*0.12));
+  const s=SEN[key];
+  const lbl={id:genId(),type:'static',sensorKey:'',x,y,z:nextZ(),visible:true,
+    customText:s.l.toUpperCase(),w,h:fsLbl*1.3,fontSize:fsLbl,fontFamily:vibe.font,
+    color:vibe.sub,bold:false,align:'left',manualSize:false};
+  elems.push(lbl);renderEl(lbl);
+  const val={id:genId(),type:'text',sensorKey:key,unit:s.u||'',x,y:y+fsLbl*1.5,
+    z:nextZ(),visible:true,w,h:fsVal*1.3,fontSize:fsVal,fontFamily:vibe.font,
+    color:vibe.text,bold:true,align:'left',prefix:'',manualSize:false};
+  elems.push(val);renderEl(val);
+  const barY=y+fsLbl*1.5+fsVal*1.4;
+  if(s.max!==null){
+    const bar={id:genId(),type:'bar',sensorKey:key,x,y:barY,z:nextZ(),visible:true,
+      w,h:Math.max(4,Math.round(w*0.03)),fillColor:vibe.accent,bgColor:vibe.sub.slice(0,7)+'22',
+      borderColor:'#00000000',borderThickness:0,cornerRadius:vibe.corner>2?4:0,
+      maxValue:s.max,manualSize:true};
+    elems.push(bar);renderEl(bar);
+    return barY+12;
+  }
+  return barY;
+}
+function mkBigBar(x,y,w,key,vibe){
+  // Standalone labeled bar — taller, used as a primary display type (not the compact row version)
+  const s=SEN[key];
+  const fsLbl=Math.max(11,Math.round(w*0.06));
+  const lbl={id:genId(),type:'static',sensorKey:'',x,y,z:nextZ(),visible:true,
+    customText:s.l.toUpperCase(),w,h:fsLbl*1.3,fontSize:fsLbl,fontFamily:vibe.font,
+    color:vibe.sub,bold:false,align:'left',manualSize:false};
+  elems.push(lbl);renderEl(lbl);
+  const barY=y+fsLbl*1.5;
+  const barH=Math.max(14,Math.round(w*0.045));
+  const bar={id:genId(),type:'bar',sensorKey:key,x,y:barY,z:nextZ(),visible:true,
+    w,h:barH,fillColor:vibe.accent,bgColor:vibe.sub.slice(0,7)+'22',
+    borderColor:'#00000000',borderThickness:0,cornerRadius:vibe.corner>4?barH/2:3,
+    maxValue:s.max||100,manualSize:true};
+  elems.push(bar);renderEl(bar);
+  return {h:fsLbl*1.5+barH, w};
+}
+function mkGraph(x,y,w,h,key,vibe){
+  const s=SEN[key];
+  const fsLbl=Math.max(11,Math.round(w*0.05));
+  const lbl={id:genId(),type:'static',sensorKey:'',x,y,z:nextZ(),visible:true,
+    customText:s.l.toUpperCase(),w,h:fsLbl*1.3,fontSize:fsLbl,fontFamily:vibe.font,
+    color:vibe.sub,bold:false,align:'left',manualSize:false};
+  elems.push(lbl);renderEl(lbl);
+  const gY=y+fsLbl*1.5;
+  const gH=h-fsLbl*1.5;
+  const graph={id:genId(),type:'linegraph',sensorKey:key,x,y:gY,z:nextZ(),visible:true,
+    w,h:gH,maxValue:s.max||100,lineColor:vibe.accent,bgColor:vibe.sub.slice(0,7)+'18',
+    showGrid:true,gridColor:vibe.sub.slice(0,7)+'22',historySeconds:60,manualSize:true};
+  elems.push(graph);renderEl(graph);
+  return {h:fsLbl*1.5+gH, w};
+}
+function mkDivider(x,y,w,vibe){
+  const div={id:genId(),type:'rect',sensorKey:'',x,y,z:nextZ(),visible:true,
+    w,h:1.5,fillColor:vibe.sub.slice(0,7)+'40',cornerRadius:0,manualSize:true};
+  elems.push(div);renderEl(div);
+  return 1.5;
+}
+
+// ── Layout templates ──────────────────────────────────────────────────────────
+// Multiple genuinely different structures per orientation, picked at random
+// each generation so repeat AI Generate calls produce visibly different results.
+
+function layoutVertical(vibe, sensorList, margin, usableW){
+  const templates=['rings-top','stacked-bars','mixed-graph','single-column'];
+  const tmpl=templates[Math.floor(Math.random()*templates.length)];
+  console.log('[AI Generate] Vertical template:', tmpl);
+
+  let y=margin;
+  const clk=mkClock(margin,y,usableW,vibe); y+=clk.h+4;
+  const dt=mkDate(margin,y,usableW,vibe); y+=dt.h+margin*0.8;
+
+  const ringKeys=sensorList.filter(([k,t])=>t==='ring').map(([k])=>k);
+  const barKeys=sensorList.filter(([k,t])=>t==='bar').map(([k])=>k);
+  const graphKeys=sensorList.filter(([k,t])=>t==='graph').map(([k])=>k);
+  const textKeys=sensorList.filter(([k,t])=>t==='text').map(([k])=>k);
+  // Treat any ring/bar without explicit graph as part of the "featured" group
+  const featured=[...ringKeys,...barKeys];
+  const shuffledText=[...textKeys];
+  if(Math.random()<0.5) shuffledText.sort(()=>Math.random()-0.5);
+  const showDivider=Math.random()<0.45;
+
+  if(tmpl==='rings-top'){
+    // Two rings side by side, then 2-col grid of remaining sensors
+    if(featured.length>0){
+      const ringScale=0.92+Math.random()*0.16;
+      const ringD=Math.round((featured.length===1?usableW*0.5:usableW*0.38)*ringScale);
+      const gap=usableW-ringD*Math.min(2,featured.length);
+      featured.slice(0,2).forEach((key,i)=>{
+        mkRing(margin+i*(ringD+gap),y,ringD,key,vibe);
+      });
+      y+=ringD+Math.max(11,Math.round(ringD*0.085))*1.6+margin*0.9;
+    }
+    if(showDivider){y+=mkDivider(margin,y,usableW,vibe)+margin*0.6;}
+    const colW=Math.round((usableW-margin*0.5)/2);
+    let leftY=y, rightY=y;
+    [...shuffledText,...featured.slice(2)].forEach((key,i)=>{
+      if(i%2===0) leftY=mkTextRow(margin,leftY,colW,key,vibe)+margin*0.6;
+      else rightY=mkTextRow(margin+colW+margin*0.5,rightY,colW,key,vibe)+margin*0.6;
+    });
+
+  } else if(tmpl==='stacked-bars'){
+    // All featured sensors as big standalone bars, stacked vertically, then text grid
+    featured.forEach(key=>{
+      const r=mkBigBar(margin,y,usableW,key,vibe);
+      y+=r.h+margin*0.5;
+    });
+    if(showDivider && (featured.length>0)){y+=mkDivider(margin,y,usableW,vibe)+margin*0.5;}
+    const colW=Math.round((usableW-margin*0.5)/2);
+    let leftY=y, rightY=y;
+    shuffledText.forEach((key,i)=>{
+      if(i%2===0) leftY=mkTextRow(margin,leftY,colW,key,vibe)+margin*0.6;
+      else rightY=mkTextRow(margin+colW+margin*0.5,rightY,colW,key,vibe)+margin*0.6;
+    });
+
+  } else if(tmpl==='mixed-graph'){
+    // One ring (hero), one full-width graph, remaining as single-column rows
+    if(featured.length>0){
+      const ringD=Math.round(usableW*0.46);
+      mkRing(Math.round(margin+(usableW-ringD)/2),y,ringD,featured[0],vibe);
+      y+=ringD+Math.max(11,Math.round(ringD*0.085))*1.6+margin*0.7;
+    }
+    const graphH=Math.round(usableW*0.32);
+    const graphKey=featured[1]||graphKeys[0]||shuffledText[0];
+    if(graphKey){
+      const r=mkGraph(margin,y,usableW,graphH,graphKey,vibe);
+      y+=r.h+margin*0.7;
+      shuffledText.splice(shuffledText.indexOf(graphKey),1);
+    }
+    if(showDivider){y+=mkDivider(margin,y,usableW,vibe)+margin*0.5;}
+    shuffledText.forEach(key=>{
+      y=mkTextRow(margin,y,usableW,key,vibe)+margin*0.5;
+    });
+
+  } else { // single-column
+    // Everything in one full-width column: featured items get rings if room,
+    // otherwise compact rows; cleaner, simpler look
+    const all=[...featured,...shuffledText];
+    let ringBudget=Math.min(1,featured.length); // only first featured as a ring here
+    all.forEach((key,i)=>{
+      if(i===0 && featured.includes(key) && ringBudget>0){
+        const ringD=Math.round(usableW*0.42);
+        mkRing(Math.round(margin+(usableW-ringD)/2),y,ringD,key,vibe);
+        y+=ringD+Math.max(11,Math.round(ringD*0.085))*1.6+margin*0.7;
+        ringBudget--;
+      } else {
+        y=mkTextRow(margin,y,usableW,key,vibe)+margin*0.45;
+      }
+    });
+  }
+}
+
+function layoutHorizontal(vibe, sensorList, margin, usableW){
+  const templates=['rings-mid','bars-right','graph-bottom'];
+  const tmpl=templates[Math.floor(Math.random()*templates.length)];
+  console.log('[AI Generate] Horizontal template:', tmpl);
+
+  const ringKeys=sensorList.filter(([k,t])=>t==='ring').map(([k])=>k);
+  const barKeys=sensorList.filter(([k,t])=>t==='bar').map(([k])=>k);
+  const featured=[...ringKeys,...barKeys];
+  const textKeys=sensorList.filter(([k,t])=>t==='text').map(([k])=>k);
+  const shuffledText=[...textKeys];
+  if(Math.random()<0.5) shuffledText.sort(()=>Math.random()-0.5);
+
+  let x=margin;
+  const colW=Math.round(usableW*0.2);
+  const clk=mkClock(x,margin,colW,vibe);
+  const dt=mkDate(x,margin+clk.h+4,colW,vibe);
+  x+=colW+margin;
+
+  // Helper: lay out text rows in as many columns as needed to fit CH,
+  // wrapping to a new column instead of overflowing the bottom
+  const ROW_H_EST=row=>{
+    const fsLbl=Math.max(11,Math.round(row*0.07)), fsVal=Math.max(16,Math.round(row*0.12));
+    return fsLbl*1.5+fsVal*1.4+12+margin*0.4;
+  };
+  function layoutTextColumns(startX, startY, availW, availH, keys){
+    if(keys.length===0||availW<=60) return startX;
+    // Estimate how many rows fit per column
+    const rowH=ROW_H_EST(Math.min(availW,200));
+    const rowsPerCol=Math.max(1,Math.floor((availH-startY)/rowH));
+    const nCols=Math.max(1,Math.ceil(keys.length/rowsPerCol));
+    const colW=Math.min(220,Math.floor((availW-margin*0.5*(nCols-1))/nCols));
+    let idx=0,maxX=startX;
+    for(let c=0;c<nCols;c++){
+      let cy=startY;
+      const cx=startX+c*(colW+margin*0.5);
+      for(let r=0;r<rowsPerCol && idx<keys.length;r++,idx++){
+        cy=mkTextRow(cx,cy,colW,keys[idx],vibe)+margin*0.4;
+      }
+      maxX=Math.max(maxX,cx+colW);
+    }
+    return maxX;
+  }
+
+  if(tmpl==='rings-mid'){
+    if(featured.length>0){
+      const ringScale=0.92+Math.random()*0.16;
+      const ringD=Math.round(CH*0.46*ringScale);
+      const labelH=Math.max(11,Math.round(ringD*0.085))*1.6;
+      const ringY=Math.round((CH-ringD-labelH)/2);
+      featured.slice(0,3).forEach(key=>{
+        mkRing(x,ringY,ringD,key,vibe);
+        x+=ringD+margin*0.6;
+      });
+    }
+    const remainW=CW-x-margin;
+    layoutTextColumns(x,margin,remainW,CH-margin,shuffledText);
+
+  } else if(tmpl==='bars-right'){
+    // Big bars stacked in a middle column (only as many as fit), text after
+    const barColW=Math.round(usableW*0.32);
+    const barH=ROW_H_EST(barColW)*0.75;
+    const maxBars=Math.max(1,Math.floor((CH-margin*2)/barH));
+    let by=margin;
+    featured.slice(0,maxBars).forEach(key=>{
+      const r=mkBigBar(x,by,barColW,key,vibe);
+      by+=r.h+margin*0.5;
+    });
+    // Any leftover featured sensors fall through to text columns
+    const overflowFeatured=featured.slice(maxBars);
+    x+=barColW+margin;
+    const remainW=CW-x-margin;
+    layoutTextColumns(x,margin,remainW,CH-margin,[...shuffledText,...overflowFeatured]);
+
+  } else { // graph-bottom
+    const topH=Math.round(CH*0.62);
+    if(featured.length>0){
+      const ringD=Math.round(topH*0.7);
+      const labelH=Math.max(11,Math.round(ringD*0.085))*1.6;
+      const ringY=Math.round((topH-ringD-labelH)/2)+margin*0.3;
+      featured.slice(0,2).forEach(key=>{
+        mkRing(x,ringY,ringD,key,vibe);
+        x+=ringD+margin*0.6;
+      });
+    }
+    const remainW=CW-x-margin;
+    const graphKey=featured[2]||shuffledText[shuffledText.length-1];
+    const textForTop=graphKey?shuffledText.filter(k=>k!==graphKey):shuffledText;
+    layoutTextColumns(x,margin,remainW,topH,textForTop);
+    if(graphKey){
+      mkGraph(margin,topH+margin*0.5,usableW,CH-topH-margin*1.5,graphKey,vibe);
+    }
+  }
+}
+
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
 buildPalette();
