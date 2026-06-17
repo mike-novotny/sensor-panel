@@ -245,7 +245,7 @@ const SEN={
   NET_DOWN:    {l:'Download Speed',  u:'MB/s', s:45,  max:null, cat:'network'},
   NET_UP:      {l:'Upload Speed',    u:'MB/s', s:12,  max:null, cat:'network'},
   NET_PING:    {l:'Ping',            u:'ms',   s:8,   max:null, cat:'network'},
-  FRAMERATE:   {l:'Framerate (Displayed)', u:'FPS', s:120, max:null, cat:'network'},
+  FRAMERATE:   {l:'Framerate (PresentMon — unreliable w/o Pro)', u:'FPS', s:120, max:null, cat:'network'},
   // System
   BATTERY:     {l:'Battery',         u:'%',    s:85,  max:100,  cat:'system'},
 };
@@ -266,8 +266,10 @@ let visibleSensors=new Set([
   'NET_DOWN','NET_UP',
   // Fans & MOBO
   'MB_TEMP','CHASSIS_FAN1','CHASSIS_FAN2','CHASSIS_FAN3',
-  // Gaming
-  'FRAMERATE',
+  // Note: FRAMERATE (PresentMon) is intentionally NOT in the default list.
+  // HWiNFO's PresentMon-based framerate tracking unreliably picks the wrong
+  // application without an HWiNFO Pro license to exclude background apps.
+  // Available via the full ＋ Sensors picker if you still want to try it.
 ]);
 
 // Sensors that show ALL element variants (text+bar+ring+graph+preset)

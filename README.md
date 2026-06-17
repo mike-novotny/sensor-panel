@@ -374,7 +374,9 @@ This file contains every sensor HWiNFO64 exposes, including hardware-specific se
 
 ### Framerate Sensor
 
-For gaming metrics, use **`FRAMERATE`** which maps to `Framerate Displayed (avg)` — the frames actually shown on screen after VSync/G-Sync/FreeSync processing. This reflects the real-world experience rather than the raw GPU output rate.
+HWiNFO64 can expose framerate via its PresentMon integration (`FRAMERATE` key, sources like `Framerate Displayed (avg)`). In practice this is **unreliable without an HWiNFO Pro license** — the free version doesn't let you exclude background applications from PresentMon tracking, so it frequently reports the framerate of the wrong window instead of your game.
+
+For this reason `FRAMERATE` is **not included in the default sensor palette**. It's still available via the **＋ Sensors** picker if you want to experiment with it, and via HWiNFO Pro it becomes a reliable option.
 
 ---
 

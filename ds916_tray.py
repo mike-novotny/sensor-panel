@@ -50,7 +50,11 @@ DEFAULT_CFG = {
         'DISK_WRITE': None,
         'NET_DOWN':   302,
         'NET_UP':     303,
-        'FRAMERATE':  283,
+        # FRAMERATE intentionally omitted from defaults — HWiNFO's
+        # PresentMon tracking is unreliable without an HWiNFO Pro license
+        # to exclude background applications. Available via discovery
+        # if the user wants to map it manually.
+        'FRAMERATE':  None,
     }
 }
 
@@ -708,7 +712,7 @@ def load_theme(path):
                     'DISK_WRITE':   ['Write Rate', 'Disk Write Rate'],
                     'NET_DOWN':     ['Current DL rate', 'Download rate'],
                     'NET_UP':       ['Current UP rate', 'Upload rate'],
-                    'FRAMERATE':    ['Framerate Displayed (avg)', 'Framerate Presented (avg)'],
+                    # FRAMERATE intentionally not auto-mapped — see note above
                 }
                 auto_map = {}
                 for key, candidates in KEY_NAMES.items():
