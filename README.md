@@ -4,6 +4,8 @@ A fully open-source sensor panel system for the **Jonsbo DS916** (and compatible
 
 Design custom themes visually, stream live hardware sensor data from HWiNFO64, and run everything silently in the background — no proprietary software required.
 
+> This project relies entirely on [HWiNFO64](https://www.hwinfo.com) for sensor data. If you find this useful, please consider a [HWiNFO Pro license](https://www.hwinfo.com/buy/) — it removes the shared memory time limit and supports the developer of the tool this whole project is built on.
+
 ---
 
 ## Background — How This Was Discovered
@@ -391,6 +393,8 @@ HWiNFO64 free edition disables shared memory after 12 hours. The tray app automa
 3. **Registry mode** — change HWiNFO Source to `registry` in Settings. No time limit but requires configuring the HWiNFO Gadget manually
 
 Check the current source at any time via tray icon → **ℹ Status…**
+
+> **Please consider supporting HWiNFO64.** This entire project depends on HWiNFO's excellent and freely available sensor monitoring engine — without it, none of this would be possible. A [HWiNFO Pro license](https://www.hwinfo.com/buy/) removes the 12-hour shared memory limit entirely (making the restart workaround unnecessary), adds remote monitoring, and supports continued development of a tool the whole PC hardware community relies on. It's inexpensive and a fair trade for the years of free, high-quality work that's gone into it.
 
 ---
 
