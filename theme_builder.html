@@ -1104,30 +1104,26 @@ function saveSensorMap(mbg){
   });mbg.remove();toast('Sensor map saved');
 }
 
-// ── EXPORT — single .ds916theme file with background embedded as base64 ──────
+// ── EXPORT — single .ds916theme file with all assets embedded as base64 ──────
 async function exportTheme(){
   const name=$('themeName').value.trim()||'MyTheme';
-
-  // Embed background as base64 data URL in the theme JSON
-  let bgData=null,bgName=null;
-  if(backData?.data){bgData=backData.data;bgName=backData.name;}
-
-  // Embed image layers as base64
-  const elements=elems.map(el=>{
-    const e={...el};
-    delete e.file;delete e._pil_image;
-    // Keep el.data (already a data URL) for image layers
-    return e;
-  });
 
   const theme={
     name,width:CW,height:CH,
     background:'#111114',
-    backgroundImage:bgData||null,
-    backgroundImageName:bgName||null,
+    backgroundImage:backData?.data||null,
+    backgroundImageName:backData?.name||null,
     sensorMap,themeColors,
     visibleSensors:[...visibleSensors],
-    elements
+    // Embed all custom font files so renderer can use them
+    customFonts: Object.entries(fontFiles).map(([family,f])=>({
+      family, filename:f.name, data:f.data
+    })),
+    elements:elems.map(el=>{
+      const e={...el};
+      delete e.file;delete e._pil_image;
+      return e;
+    })
   };
 
   const json=JSON.stringify(theme,null,2);

@@ -157,29 +157,123 @@ def read_sensors():
 
 # ── Font loader ───────────────────────────────────────────────────────────────
 _font_cache = {}
+_custom_font_files = {}  # family name -> temp file path (extracted from theme)
+
+def _find_windows_font(family, bold=False):
+    """Search Windows font directories for a font matching the family name."""
+    import glob, re
+
+    # Known exact mappings for common fonts
+    KNOWN = {
+        'Consolas':    ('consolab.ttf', 'consola.ttf'),
+        'Arial':       ('arialbd.ttf',  'arial.ttf'),
+        'Segoe UI':    ('segoeuib.ttf', 'segoeui.ttf'),
+        'Courier New': ('courbd.ttf',   'cour.ttf'),
+        'Tahoma':      ('tahomabd.ttf', 'tahoma.ttf'),
+        'Verdana':     ('verdanab.ttf', 'verdana.ttf'),
+        'Impact':      ('impact.ttf',   'impact.ttf'),
+        'Georgia':     ('georgiab.ttf', 'georgia.ttf'),
+        'Calibri':     ('calibrib.ttf', 'calibri.ttf'),
+        'Times New Roman': ('timesbd.ttf', 'times.ttf'),
+        'Comic Sans MS':   ('comicbd.ttf', 'comic.ttf'),
+        'Trebuchet MS':    ('trebucbd.ttf','trebuc.ttf'),
+        'Palatino Linotype':('palabd.ttf','pala.ttf'),
+        'Century Gothic':  ('gothicb.ttf','gothic.ttf'),
+    }
+
+    font_dirs = [
+        'C:/Windows/Fonts/',
+        os.path.expanduser('~/AppData/Local/Microsoft/Windows/Fonts/'),
+    ]
+
+    # Try known mapping first
+    if family in KNOWN:
+        b, r = KNOWN[family]
+        fname = b if bold else r
+        for d in font_dirs:
+            p = d + fname
+            if os.path.exists(p): return p
+        # Try the other variant
+        fname2 = r if bold else b
+        for d in font_dirs:
+            p = d + fname2
+            if os.path.exists(p): return p
+
+    # Dynamic search: look for files matching the family name
+    safe = re.sub(r'[^a-z0-9]', '', family.lower())
+    for d in font_dirs:
+        candidates = glob.glob(d + '*.ttf') + glob.glob(d + '*.otf')
+        scored = []
+        for path in candidates:
+            base = re.sub(r'[^a-z0-9]', '', os.path.basename(path).lower())
+            if safe in base:
+                # Prefer bold variants when bold=True
+                is_bold = any(x in base for x in ['bold','bd','b'])
+                score = (is_bold == bold) * 2 + (safe == base.replace('.ttf','').replace('.otf',''))
+                scored.append((score, path))
+        if scored:
+            scored.sort(reverse=True)
+            return scored[0][1]
+
+    return None
+
 def get_font(family='Consolas', size=32, bold=False):
     key = (family, size, bold)
     if key in _font_cache: return _font_cache[key]
-    win_fonts = 'C:/Windows/Fonts/'
-    candidates = {
-        'Consolas':     [('consolab.ttf','consola.ttf')],
-        'Arial':        [('arialbd.ttf','arial.ttf')],
-        'Segoe UI':     [('segoeuib.ttf','segoeui.ttf')],
-        'Courier New':  [('courbd.ttf','cour.ttf')],
-        'Tahoma':       [('tahomabd.ttf','tahoma.ttf')],
-        'Verdana':      [('verdanab.ttf','verdana.ttf')],
-        'Impact':       [('impact.ttf','impact.ttf')],
-        'Georgia':      [('georgiab.ttf','georgia.ttf')],
-    }
-    pairs = candidates.get(family, [('consolab.ttf','consola.ttf')])[0]
-    fname = pairs[0] if bold else pairs[1]
-    try:
-        font = ImageFont.truetype(win_fonts+fname, size)
-    except:
-        try: font = ImageFont.truetype(win_fonts+(pairs[0] if not bold else pairs[1]), size)
-        except: font = ImageFont.load_default()
-    _font_cache[key] = font
+
+    font = None
+
+    # 1. Try custom embedded font first (extracted from theme)
+    if family in _custom_font_files:
+        try:
+            font = ImageFont.truetype(_custom_font_files[family], size)
+        except Exception as e:
+            print(f'Custom font load error ({family}): {e}')
+
+    # 2. Search Windows Fonts
+    if not font:
+        path = _find_windows_font(family, bold)
+        if path:
+            try:
+                font = ImageFont.truetype(path, size)
+            except Exception as e:
+                print(f'Font load error ({path}): {e}')
+
+    # 3. Fallback to Consolas
+    if not font:
+        try:
+            fb = 'C:/Windows/Fonts/' + ('consolab.ttf' if bold else 'consola.ttf')
+            font = ImageFont.truetype(fb, size)
+        except:
+            font = ImageFont.load_default()
+
+    if family not in _font_cache or font:
+        _font_cache[key] = font
     return font
+
+def load_custom_fonts_from_theme(theme):
+    """Extract embedded font data URLs from theme and write to temp files."""
+    import tempfile, base64
+    for cf in theme.get('customFonts', []):
+        family = cf.get('family','')
+        data_url = cf.get('data','')
+        filename = cf.get('filename','font.ttf')
+        if not family or not data_url or ',' not in data_url:
+            continue
+        try:
+            _, b64 = data_url.split(',', 1)
+            font_bytes = base64.b64decode(b64)
+            ext = os.path.splitext(filename)[1] or '.ttf'
+            tmp = tempfile.NamedTemporaryFile(delete=False, suffix=ext)
+            tmp.write(font_bytes)
+            tmp.close()
+            _custom_font_files[family] = tmp.name
+            # Clear cache entries for this family so they get reloaded
+            for k in list(_font_cache.keys()):
+                if k[0] == family: del _font_cache[k]
+            print(f'Custom font extracted: "{family}" -> {tmp.name}')
+        except Exception as e:
+            print(f'Custom font extract error ({family}): {e}')
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 def parse_color(c):
@@ -462,6 +556,9 @@ def load_theme(path):
         # Update sensor map from theme if present
         if 'sensorMap' in theme:
             cfg['sensor_map'].update(theme['sensorMap'])
+
+        # Extract and register any custom fonts embedded in the theme
+        load_custom_fonts_from_theme(theme)
 
         _current_theme = theme
         _current_theme_path = path

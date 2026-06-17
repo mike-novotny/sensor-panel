@@ -13,7 +13,7 @@ echo.
 
 :: Build exe
 echo [2/3] Building DS916Tray.exe...
-pyinstaller --onefile --windowed --name=DS916Tray --hidden-import=pystray._win32 --hidden-import=PIL._tkinter_finder ds916_tray.py
+python -m PyInstaller --onefile --windowed --name=DS916Tray --hidden-import=pystray._win32 --hidden-import=PIL._tkinter_finder ds916_tray.py
 if errorlevel 1 (echo ERROR: PyInstaller failed && pause && exit /b 1)
 echo Done.
 echo.
