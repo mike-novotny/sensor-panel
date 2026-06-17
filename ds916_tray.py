@@ -522,21 +522,60 @@ def render_frame(theme, sensors):
             bg_c    = color_rgba(el.get('bgColor','#1a1a2299'))
             fill_c  = color_rgba(el.get('fillColor','#00b4ffff'))
             bord_c  = color_rgba(el.get('borderColor','#00000000'))
-            # Background
-            if rad > 0:
-                draw.rounded_rectangle([x,y,x+w,y+h], radius=rad, fill=bg_c)
-            else:
-                draw.rectangle([x,y,x+w,y+h], fill=bg_c)
-            # Fill
-            fw = int(w*pct)
-            if fw > 0:
+            style   = el.get('barStyle','solid')
+
+            if style == 'segmented':
+                # Discrete LED-style blocks — each segment is either fully lit or unlit
+                segs    = int(el.get('segmentCount', 12))
+                gap_pct = float(el.get('segmentGap', 18)) / 100.0
+                lit_count = round(pct * segs)
+                seg_w_full = w / segs
+                seg_w = seg_w_full * (1 - gap_pct)
+                seg_rad = min(rad, 3)
+                for i in range(segs):
+                    sx = x + i*seg_w_full
+                    lit = i < lit_count
+                    color = fill_c if lit else bg_c
+                    if seg_rad > 0:
+                        draw.rounded_rectangle([sx, y, sx+seg_w, y+h], radius=seg_rad, fill=color)
+                    else:
+                        draw.rectangle([sx, y, sx+seg_w, y+h], fill=color)
+
+            elif style == 'gapped':
+                # Continuous fill with thin vertical gap lines overlaid
+                segs  = int(el.get('segmentCount', 16))
+                gap_w = max(1, int(el.get('segmentGap', 2)))
                 if rad > 0:
-                    draw.rounded_rectangle([x,y,x+fw,y+h], radius=rad, fill=fill_c)
+                    draw.rounded_rectangle([x,y,x+w,y+h], radius=rad, fill=bg_c)
                 else:
-                    draw.rectangle([x,y,x+fw,y+h], fill=fill_c)
-            # Border
-            if thick > 0:
-                draw.rectangle([x,y,x+w,y+h], outline=bord_c, width=thick)
+                    draw.rectangle([x,y,x+w,y+h], fill=bg_c)
+                fw = int(w*pct)
+                if fw > 0:
+                    if rad > 0:
+                        draw.rounded_rectangle([x,y,x+fw,y+h], radius=rad, fill=fill_c)
+                    else:
+                        draw.rectangle([x,y,x+fw,y+h], fill=fill_c)
+                # Overlay gap lines using the background color, cutting through both fill and empty zones
+                seg_w_full = w / segs
+                for i in range(1, segs):
+                    gx = x + i*seg_w_full
+                    draw.rectangle([gx-gap_w/2, y, gx+gap_w/2, y+h], fill=bg_c)
+                if thick > 0:
+                    draw.rectangle([x,y,x+w,y+h], outline=bord_c, width=thick)
+
+            else:  # solid
+                if rad > 0:
+                    draw.rounded_rectangle([x,y,x+w,y+h], radius=rad, fill=bg_c)
+                else:
+                    draw.rectangle([x,y,x+w,y+h], fill=bg_c)
+                fw = int(w*pct)
+                if fw > 0:
+                    if rad > 0:
+                        draw.rounded_rectangle([x,y,x+fw,y+h], radius=rad, fill=fill_c)
+                    else:
+                        draw.rectangle([x,y,x+fw,y+h], fill=fill_c)
+                if thick > 0:
+                    draw.rectangle([x,y,x+w,y+h], outline=bord_c, width=thick)
 
         elif typ=='ring':
             raw_val = float(sv(el.get('sensorKey','CPU_USAGE'), 0))
@@ -548,13 +587,31 @@ def render_frame(theme, sensors):
             diam    = min(w, h)
             margin  = rw//2 + 2
             box     = [x+margin, y+margin, x+diam-margin, y+diam-margin]
-            # Track
-            draw.arc(box, 0, 360, fill=trk_c, width=rw)
-            # Arc
-            start_a = -90
-            end_a   = start_a + int(360*pct)
-            if pct > 0:
-                draw.arc(box, start_a, end_a, fill=arc_c, width=rw)
+            ring_style = el.get('ringStyle', 'solid')
+
+            if ring_style == 'segmented':
+                # Discrete arc blocks all the way around; lit segments use arc_c,
+                # unlit use trk_c. Matches the builder's SVG segmented preview.
+                segs    = int(el.get('segmentCount', 24))
+                gap_deg = float(el.get('segmentGap', 6))
+                seg_deg = 360.0 / segs
+                arc_deg = max(0.5, seg_deg - gap_deg)
+                lit_count = round(pct * segs)
+                for i in range(segs):
+                    start_a = -90 + i*seg_deg + gap_deg/2
+                    end_a   = start_a + arc_deg
+                    lit     = i < lit_count
+                    color   = arc_c if lit else trk_c
+                    draw.arc(box, start_a, end_a, fill=color, width=rw)
+            else:
+                # Track
+                draw.arc(box, 0, 360, fill=trk_c, width=rw)
+                # Arc
+                start_a = -90
+                end_a   = start_a + int(360*pct)
+                if pct > 0:
+                    draw.arc(box, start_a, end_a, fill=arc_c, width=rw)
+
             # Label
             if el.get('showLabel', True):
                 lfs   = int(el.get('labelFontSize', 28))
@@ -573,22 +630,24 @@ def render_frame(theme, sensors):
                 draw.text((cx,cy), label, font=lfont, fill=lcolor)
 
         elif typ=='linegraph':
-            raw_val = float(sv(el.get('sensorKey','CPU_USAGE'), 0))
-            max_val = float(el.get('maxValue', 100))
             eid     = el.get('id','')
             hist_s  = int(el.get('historySeconds', 60))
             maxlen  = max(10, hist_s * cfg.get('fps',6))
-            if eid not in _graph_history:
-                from collections import deque
-                _graph_history[eid] = deque(maxlen=maxlen)
-            _graph_history[eid].append(raw_val)
-            pts = list(_graph_history[eid])
+
+            # Build series list: series 1 = left axis, series 2/3 = right axis
+            max_val  = float(el.get('maxValue', 100))
+            max_val2 = float(el.get('maxValue2', 100))
+            series_defs = [
+                (el.get('sensorKey',''),  el.get('lineColor','#00b4ffff'),  max_val,  el.get('fillColor')),
+            ]
+            if el.get('sensorKey2'):
+                series_defs.append((el.get('sensorKey2'), el.get('lineColor2','#ff3df0ff'), max_val2, None))
+            if el.get('sensorKey3'):
+                series_defs.append((el.get('sensorKey3'), el.get('lineColor3','#5effc0ff'), max_val2, None))
 
             lw   = int(el.get('lineWidth',2))
             rad  = int(el.get('cornerRadius',4))
             bg_c = color_rgba(el.get('bgColor','#0a0a1499'))
-            lc   = color_rgb(el.get('lineColor','#00b4ffff'))
-            fc   = color_rgba(el.get('fillColor','#00b4ff33'))
             gc   = color_rgba(el.get('gridColor','#ffffff22'))
             show_grid = el.get('showGrid', True)
 
@@ -600,15 +659,29 @@ def render_frame(theme, sensors):
                     gy = y + h*gi//4
                     draw.line([(x,gy),(x+w,gy)], fill=gc, width=1)
 
-            if len(pts)>=2:
-                n=len(pts)
+            for si, (skey, lcolor, smax, fillcolor) in enumerate(series_defs):
+                if not skey: continue
+                raw_val = float(sv(skey, 0))
+                hist_key = f'{eid}_{si}'
+                if hist_key not in _graph_history:
+                    from collections import deque
+                    _graph_history[hist_key] = deque(maxlen=maxlen)
+                _graph_history[hist_key].append(raw_val)
+                pts = list(_graph_history[hist_key])
+                if len(pts) < 2: continue
+
+                lc = color_rgb(lcolor)
+                n = len(pts)
                 def gx(i): return x + int(i/(n-1)*w)
-                def gy_v(v): return y+h - int(max(0,min(1,v/max_val if max_val else 0))*h*0.88+h*0.06)
+                def gy_v(v, smax=smax): return y+h - int(max(0,min(1,v/smax if smax else 0))*h*0.88+h*0.06)
                 coords = [(gx(i), gy_v(v)) for i,v in enumerate(pts)]
-                # Fill polygon
-                poly = [(x,y+h)] + coords + [(x+w,y+h)]
-                draw.polygon(poly, fill=fc)
-                # Line
+
+                # Only series 1 gets a fill-under (matches builder preview behavior)
+                if si == 0 and fillcolor:
+                    fc = color_rgba(fillcolor)
+                    poly = [(x,y+h)] + coords + [(x+w,y+h)]
+                    draw.polygon(poly, fill=fc)
+
                 draw.line(coords, fill=lc, width=lw)
 
         elif typ=='rect':

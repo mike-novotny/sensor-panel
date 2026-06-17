@@ -657,8 +657,31 @@ function renderEl(el){
   if(el.type==='bar'){
     const pct=Math.min(100,(parseFloat(pVal(el.sensorKey))/(el.maxValue||100))*100)||42;
     const rad=el.cornerRadius||0;
-    inner.innerHTML=`<div style="width:100%;height:100%;background:${a2css(el.bgColor)};border-radius:${rad}px;overflow:hidden;${el.borderThickness?`border:${el.borderThickness}px solid ${a2css(el.borderColor)}`:''}">
-      <div style="width:${pct}%;height:100%;background:${a2css(el.fillColor)};border-radius:${rad}px 0 0 ${rad}px"></div></div>`;
+    const style=el.barStyle||'solid';
+    if(style==='segmented'){
+      const segs=el.segmentCount||12;
+      const gapPct=el.segmentGap!=null?el.segmentGap:18; // % of each segment width used as gap
+      const litCount=Math.round((pct/100)*segs);
+      const segW=100/segs;
+      let segHtml='';
+      for(let i=0;i<segs;i++){
+        const lit=i<litCount;
+        const segLeft=i*segW;
+        const segWInner=segW*(1-gapPct/100);
+        segHtml+=`<div style="position:absolute;left:${segLeft.toFixed(2)}%;top:0;width:${segWInner.toFixed(2)}%;height:100%;background:${lit?a2css(el.fillColor):a2css(el.bgColor)};border-radius:${Math.min(rad,3)}px"></div>`;
+      }
+      inner.innerHTML=`<div style="position:relative;width:100%;height:100%;overflow:hidden">${segHtml}</div>`;
+    } else if(style==='gapped'){
+      const segs=el.segmentCount||16;
+      const gapW=Math.max(1,el.segmentGap||2); // px gap width for this style
+      inner.innerHTML=`<div style="width:100%;height:100%;background:${a2css(el.bgColor)};border-radius:${rad}px;overflow:hidden;position:relative;${el.borderThickness?`border:${el.borderThickness}px solid ${a2css(el.borderColor)}`:''}">
+        <div style="width:${pct}%;height:100%;background:${a2css(el.fillColor)};border-radius:${rad}px 0 0 ${rad}px"></div>
+        <div style="position:absolute;top:0;left:0;width:100%;height:100%;background-image:repeating-linear-gradient(90deg,transparent 0,transparent calc(100%/${segs} - ${gapW}px),${a2css(el.bgColor)} calc(100%/${segs} - ${gapW}px),${a2css(el.bgColor)} calc(100%/${segs}))"></div>
+      </div>`;
+    } else {
+      inner.innerHTML=`<div style="width:100%;height:100%;background:${a2css(el.bgColor)};border-radius:${rad}px;overflow:hidden;${el.borderThickness?`border:${el.borderThickness}px solid ${a2css(el.borderColor)}`:''}">
+        <div style="width:${pct}%;height:100%;background:${a2css(el.fillColor)};border-radius:${rad}px 0 0 ${rad}px"></div></div>`;
+    }
 
   } else if(el.type==='ring'){
     const raw=parseFloat(pVal(el.sensorKey))||0;
@@ -668,23 +691,66 @@ function renderEl(el){
     const cx=el.w/2,cy=el.h/2;
     const labelVal=Number.isInteger(raw)?raw:raw.toFixed(1);
     const lbl=el.showLabel?`<text x="${cx}" y="${cy}" text-anchor="middle" dominant-baseline="central" fill="${a2css(el.labelColor||'#ffffffff')}" font-size="${el.labelFontSize||28}" font-family="${el.labelFontFamily||'Consolas'}" font-weight="${el.labelBold?700:400}">${labelVal}${el.unit||''}</text>`:'';
-    inner.innerHTML=`<svg width="${el.w}" height="${el.h}" viewBox="0 0 ${el.w} ${el.h}" style="display:block">
-      <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${a2css(el.trackColor||'#1a1a3399')}" stroke-width="${rw}"/>
-      <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${a2css(el.arcColor||'#00b4ffff')}" stroke-width="${rw}" stroke-dasharray="${(circ*pct).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cy})"/>
-      ${lbl}</svg>`;
+    const ringStyle=el.ringStyle||'solid';
+
+    if(ringStyle==='segmented'){
+      // Discrete arc blocks around the full circle; lit ones use arcColor, unlit use trackColor
+      const segs=el.segmentCount||24;
+      const gapDeg=el.segmentGap!=null?el.segmentGap:6; // degrees of gap between segments
+      const segDeg=360/segs;
+      const arcDeg=segDeg-gapDeg;
+      const litCount=Math.round(pct*segs);
+      let segPaths='';
+      const describeArc=(startDeg,endDeg)=>{
+        const toRad=d=>(d-90)*Math.PI/180;
+        const x1=cx+r*Math.cos(toRad(startDeg)),y1=cy+r*Math.sin(toRad(startDeg));
+        const x2=cx+r*Math.cos(toRad(endDeg)),y2=cy+r*Math.sin(toRad(endDeg));
+        const large=endDeg-startDeg>180?1:0;
+        return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${r.toFixed(2)} ${r.toFixed(2)} 0 ${large} 1 ${x2.toFixed(2)} ${y2.toFixed(2)}`;
+      };
+      for(let i=0;i<segs;i++){
+        const startDeg=i*segDeg+gapDeg/2;
+        const endDeg=startDeg+arcDeg;
+        const lit=i<litCount;
+        const color=lit?a2css(el.arcColor||'#00b4ffff'):a2css(el.trackColor||'#1a1a3399');
+        segPaths+=`<path d="${describeArc(startDeg,endDeg)}" fill="none" stroke="${color}" stroke-width="${rw}" stroke-linecap="${el.segmentCap==='round'?'round':'butt'}"/>`;
+      }
+      inner.innerHTML=`<svg width="${el.w}" height="${el.h}" viewBox="0 0 ${el.w} ${el.h}" style="display:block">
+        ${segPaths}${lbl}</svg>`;
+    } else {
+      inner.innerHTML=`<svg width="${el.w}" height="${el.h}" viewBox="0 0 ${el.w} ${el.h}" style="display:block">
+        <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${a2css(el.trackColor||'#1a1a3399')}" stroke-width="${rw}"/>
+        <circle cx="${cx}" cy="${cy}" r="${r.toFixed(1)}" fill="none" stroke="${a2css(el.arcColor||'#00b4ffff')}" stroke-width="${rw}" stroke-dasharray="${(circ*pct).toFixed(1)} ${circ.toFixed(1)}" stroke-linecap="round" transform="rotate(-90 ${cx} ${cy})"/>
+        ${lbl}</svg>`;
+    }
 
   } else if(el.type==='linegraph'){
-    const n=40,max=el.maxValue||100,base=parseFloat(pVal(el.sensorKey))||50;
-    const pts=Array.from({length:n},(_,i)=>Math.min(max,Math.max(0,base+Math.sin(i*.35)*15+Math.random()*8)));
-    const W=el.w,H=el.h;
-    const xs=i=>i/(n-1)*W,ys=v=>H-((v/max)*H*0.88+H*0.06);
-    const path='M '+pts.map((v,i)=>`${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(' L ');
-    const fill=path+` L ${W},${H} L 0,${H} Z`;
+    const n=40,W=el.w,H=el.h;
+    const series=[
+      {key:el.sensorKey, color:el.lineColor||'#00b4ffff', fillColor:el.fillColor||'#00b4ff22', max:el.maxValue||100, axis:'left'},
+    ];
+    if(el.sensorKey2) series.push({key:el.sensorKey2, color:el.lineColor2||'#ff3df0ff', max:el.maxValue2||100, axis:'right'});
+    if(el.sensorKey3) series.push({key:el.sensorKey3, color:el.lineColor3||'#5effc0ff', max:el.maxValue2||100, axis:'right'});
+
     const grid=el.showGrid?[1,2,3,4].map(i=>{const gy=H*i/5;return `<line x1="0" y1="${gy.toFixed(0)}" x2="${W}" y2="${gy.toFixed(0)}" stroke="${a2css(el.gridColor||'#ffffff22')}" stroke-width="1"/>`;}).join(''):'';
+
+    let paths='';
+    series.forEach((s,si)=>{
+      const base=parseFloat(pVal(s.key))||50;
+      const seed=si*7+1; // vary the preview waveform per series so they're visually distinct
+      const pts=Array.from({length:n},(_,i)=>Math.min(s.max,Math.max(0,base+Math.sin(i*.35+seed)*15+Math.cos(i*.21+seed)*6)));
+      const xs=i=>i/(n-1)*W, ys=v=>H-((v/s.max)*H*0.88+H*0.06);
+      const path='M '+pts.map((v,i)=>`${xs(i).toFixed(1)},${ys(v).toFixed(1)}`).join(' L ');
+      if(si===0 && s.fillColor){
+        const fill=path+` L ${W},${H} L 0,${H} Z`;
+        paths+=`<path d="${fill}" fill="${a2css(s.fillColor)}" stroke="none"/>`;
+      }
+      paths+=`<path d="${path}" fill="none" stroke="${a2css(s.color)}" stroke-width="${el.lineWidth||2}" stroke-linejoin="round" stroke-linecap="round"/>`;
+    });
+
     inner.innerHTML=`<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" style="display:block;border-radius:${el.cornerRadius||3}px">
       <rect width="${W}" height="${H}" fill="${a2css(el.bgColor||'#0a0a1499')}"/>
-      ${grid}<path d="${fill}" fill="${a2css(el.fillColor||'#00b4ff22')}" stroke="none"/>
-      <path d="${path}" fill="none" stroke="${a2css(el.lineColor||'#00b4ffff')}" stroke-width="${el.lineWidth||2}" stroke-linejoin="round" stroke-linecap="round"/></svg>`;
+      ${grid}${paths}</svg>`;
 
   } else if(el.type==='rect'){
     inner.innerHTML=`<div style="width:100%;height:100%;background:${a2css(el.fillColor||'#00b4ff66')};border-radius:${el.cornerRadius||0}px"></div>`;
@@ -1002,18 +1068,37 @@ function renderProps(el){
     h+=fontBlock(el)+colorBlock('color','Text Color',el);
   } else if(el.type==='bar'){
     const keys=Object.keys(SEN).filter(k=>SEN[k].max!==null&&!TIME_KEYS.has(k));
+    const barStyle=el.barStyle||'solid';
     h+=`<div class="ps"><div class="pt">Bar</div>
     <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey',this.value,true)">${keys.map(k=>`<option value="${k}" ${k===el.sensorKey?'selected':''}>${SEN[k].l}</option>`).join('')}</select></div>
     <div class="pr"><label>Max Value</label><input type="number" value="${el.maxValue||100}" onchange="sp('maxValue',+this.value,true)"></div>
+    <div class="pr"><label>Style</label><select onchange="sp('barStyle',this.value,true)">
+      <option value="solid" ${barStyle==='solid'?'selected':''}>Solid</option>
+      <option value="segmented" ${barStyle==='segmented'?'selected':''}>Segmented (LED blocks)</option>
+      <option value="gapped" ${barStyle==='gapped'?'selected':''}>Gapped (fill + tick lines)</option>
+    </select></div>
+    ${barStyle!=='solid'?`<div class="pr"><label>Segments</label><input type="number" value="${el.segmentCount||(barStyle==='segmented'?12:16)}" onchange="sp('segmentCount',+this.value,true)" min="2" max="60"></div>
+    <div class="pr"><label>Gap ${barStyle==='segmented'?'%':'px'}</label><input type="number" value="${el.segmentGap!=null?el.segmentGap:(barStyle==='segmented'?18:2)}" onchange="sp('segmentGap',+this.value,true)" min="0" max="${barStyle==='segmented'?60:20}"></div>`:''}
     <div class="pr"><label>Corner R</label><input type="number" value="${el.cornerRadius||0}" onchange="sp('cornerRadius',+this.value,true)" min="0" max="50"></div>
     <div class="pr"><label>Border px</label><input type="number" value="${el.borderThickness||0}" onchange="sp('borderThickness',+this.value,true)" min="0"></div>
     </div>`;
     h+=colorBlock('fillColor','Fill Color',el)+colorBlock('bgColor','Background',el)+colorBlock('borderColor','Border',el);
   } else if(el.type==='ring'){
     const keys=Object.keys(SEN).filter(k=>SEN[k].max!==null&&!TIME_KEYS.has(k));
+    const ringStyle=el.ringStyle||'solid';
     h+=`<div class="ps"><div class="pt">Ring Gauge</div>
     <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey',this.value,true)">${keys.map(k=>`<option value="${k}" ${k===el.sensorKey?'selected':''}>${SEN[k].l}</option>`).join('')}</select></div>
     <div class="pr"><label>Max Value</label><input type="number" value="${el.maxValue||100}" onchange="sp('maxValue',+this.value,true)"></div>
+    <div class="pr"><label>Style</label><select onchange="sp('ringStyle',this.value,true)">
+      <option value="solid" ${ringStyle==='solid'?'selected':''}>Solid Arc</option>
+      <option value="segmented" ${ringStyle==='segmented'?'selected':''}>Segmented (LED blocks)</option>
+    </select></div>
+    ${ringStyle==='segmented'?`<div class="pr"><label>Segments</label><input type="number" value="${el.segmentCount||24}" onchange="sp('segmentCount',+this.value,true)" min="6" max="72"></div>
+    <div class="pr"><label>Gap (deg)</label><input type="number" value="${el.segmentGap!=null?el.segmentGap:6}" onchange="sp('segmentGap',+this.value,true)" min="0" max="20" step="0.5"></div>
+    <div class="pr"><label>Segment Cap</label><select onchange="sp('segmentCap',this.value,true)">
+      <option value="butt" ${el.segmentCap!=='round'?'selected':''}>Flat</option>
+      <option value="round" ${el.segmentCap==='round'?'selected':''}>Rounded</option>
+    </select></div>`:''}
     <div class="pr"><label>Ring Width</label><input type="number" value="${el.ringWidth||14}" onchange="sp('ringWidth',+this.value,true)" min="2" max="80"></div>
     <div class="pr"><label>Show Label</label><input type="checkbox" ${el.showLabel?'checked':''} onchange="sp('showLabel',this.checked,true)"></div>
     </div>`;
@@ -1030,16 +1115,36 @@ function renderProps(el){
     h+=colorBlock('arcColor','Arc Color',el)+colorBlock('trackColor','Track Color',el);
   } else if(el.type==='linegraph'){
     const keys=Object.keys(SEN).filter(k=>typeof SEN[k].s==='number'&&!TIME_KEYS.has(k));
-    h+=`<div class="ps"><div class="pt">Line Graph</div>
+    const noneOpt='<option value="">— none —</option>';
+    h+=`<div class="ps"><div class="pt">Line Graph — Series 1 (left axis)</div>
     <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey',this.value,true)">${keys.map(k=>`<option value="${k}" ${k===el.sensorKey?'selected':''}>${SEN[k].l}</option>`).join('')}</select></div>
     <div class="pr"><label>Max Value</label><input type="number" value="${el.maxValue||100}" onchange="sp('maxValue',+this.value,true)"></div>
+    </div>`;
+    h+=colorBlock('lineColor','Series 1 Color',el)+colorBlock('fillColor','Fill Under Series 1',el);
+
+    h+=`<div class="ps"><div class="pt">Series 2 (right axis)</div>
+    <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey2',this.value,true)">${noneOpt}${keys.map(k=>`<option value="${k}" ${k===el.sensorKey2?'selected':''}>${SEN[k].l}</option>`).join('')}</select></div>
+    </div>`;
+    if(el.sensorKey2) h+=colorBlock('lineColor2','Series 2 Color',el);
+
+    h+=`<div class="ps"><div class="pt">Series 3 (right axis)</div>
+    <div class="pr"><label>Sensor</label><select onchange="sp('sensorKey3',this.value,true)">${noneOpt}${keys.map(k=>`<option value="${k}" ${k===el.sensorKey3?'selected':''}>${SEN[k].l}</option>`).join('')}</select></div>
+    </div>`;
+    if(el.sensorKey3) h+=colorBlock('lineColor3','Series 3 Color',el);
+
+    if(el.sensorKey2||el.sensorKey3){
+      h+=`<div class="ps"><div class="pt">Right Axis</div>
+      <div class="pr"><label>Max Value</label><input type="number" value="${el.maxValue2||100}" onchange="sp('maxValue2',+this.value,true)"></div>
+      </div>`;
+    }
+
+    h+=`<div class="ps"><div class="pt">Graph Style</div>
     <div class="pr"><label>History (s)</label><input type="number" value="${el.historySeconds||60}" onchange="sp('historySeconds',+this.value,false)" min="5"></div>
     <div class="pr"><label>Line Width</label><input type="number" value="${el.lineWidth||2}" onchange="sp('lineWidth',+this.value,true)" min="1" max="10"></div>
     <div class="pr"><label>Show Grid</label><input type="checkbox" ${el.showGrid?'checked':''} onchange="sp('showGrid',this.checked,true)"></div>
     <div class="pr"><label>Corner R</label><input type="number" value="${el.cornerRadius||3}" onchange="sp('cornerRadius',+this.value,true)" min="0"></div>
     </div>`;
-    h+=colorBlock('lineColor','Line Color',el)+colorBlock('fillColor','Fill Under',el)+
-       colorBlock('bgColor','Background',el)+colorBlock('gridColor','Grid Lines',el);
+    h+=colorBlock('bgColor','Background',el)+colorBlock('gridColor','Grid Lines',el);
   } else if(el.type==='rect'){
     h+=`<div class="ps"><div class="pt">Rectangle</div>
     <div class="pr"><label>Corner R</label><input type="number" value="${el.cornerRadius||0}" onchange="sp('cornerRadius',+this.value,true)" min="0" max="500"></div>
