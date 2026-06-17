@@ -17,8 +17,10 @@ import PIL.Image as PILImage
 # ── Paths ────────────────────────────────────────────────────────────────────
 APP_NAME    = 'DS916Tray'
 CONFIG_DIR  = os.path.join(os.environ.get('APPDATA',''), APP_NAME)
+THEMES_DIR  = os.path.join(CONFIG_DIR, 'Themes')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
 os.makedirs(CONFIG_DIR, exist_ok=True)
+os.makedirs(THEMES_DIR, exist_ok=True)
 
 # ── Default config ────────────────────────────────────────────────────────────
 DEFAULT_CFG = {
@@ -42,8 +44,13 @@ DEFAULT_CFG = {
         'VRAM_USAGE': 228,
         'RAM_USAGE':    5,
         'RAM_USED_GB':  3,
+        'RAM_TOTAL':  None,
+        'RAM_FREE_GB':  4,
+        'DISK_READ':  None,
+        'DISK_WRITE': None,
         'NET_DOWN':   302,
-        'NET_UP':     303
+        'NET_UP':     303,
+        'FRAMERATE':  283,
     }
 }
 
@@ -453,10 +460,15 @@ def render_frame(theme, sensors):
             unit  = el.get('unit','')
 
             if typ=='clock':
-                fmt = el.get('clockFormat','12h')
+                fmt  = el.get('clockFormat','12h')
                 secs = el.get('clockSeconds', True)
                 if fmt=='12h':
-                    text = now.strftime('%I:%M:%S %p' if secs else '%I:%M %p').lstrip('0')
+                    if secs:
+                        # With seconds: zero-pad hour so AM/PM stays stable
+                        text = now.strftime('%I:%M:%S %p')
+                    else:
+                        # No seconds: strip leading zero, no shifting issue
+                        text = now.strftime('%I:%M %p').lstrip('0')
                 else:
                     text = now.strftime('%H:%M:%S' if secs else '%H:%M')
             elif typ=='date':
@@ -488,7 +500,6 @@ def render_frame(theme, sensors):
                 text = pre + val_str + (' ' if unit and val_str else '') + unit
 
             font = get_font(fam, fs, bold)
-            # Compute text position based on alignment
             try:
                 bbox = draw.textbbox((0,0), text, font=font)
                 tw = bbox[2]-bbox[0]
@@ -691,8 +702,13 @@ def load_theme(path):
                     'VRAM_USAGE':   ['GPU Memory Usage', 'GPU Memory Load'],
                     'RAM_USAGE':    ['Physical Memory Load'],
                     'RAM_USED_GB':  ['Physical Memory Used'],
+                    'RAM_TOTAL':    ['Physical Memory Total'],
+                    'RAM_FREE_GB':  ['Physical Memory Available'],
+                    'DISK_READ':    ['Read Rate', 'Disk Read Rate'],
+                    'DISK_WRITE':   ['Write Rate', 'Disk Write Rate'],
                     'NET_DOWN':     ['Current DL rate', 'Download rate'],
                     'NET_UP':       ['Current UP rate', 'Upload rate'],
+                    'FRAMERATE':    ['Framerate Displayed (avg)', 'Framerate Presented (avg)'],
                 }
                 auto_map = {}
                 for key, candidates in KEY_NAMES.items():
@@ -728,11 +744,37 @@ _port       = None
 _running    = False
 _run_thread = None
 
+def detect_ds916_port():
+    """Scan serial ports for a device matching the DS916 VID/PID (33C3:F101).
+    Returns the port name if found, otherwise None."""
+    try:
+        for port in serial.tools.list_ports.comports():
+            # pyserial exposes VID/PID on the port info
+            if port.vid == 0x33C3 and port.pid == 0xF101:
+                print(f'DS916 auto-detected on {port.device} (VID=33C3 PID=F101)')
+                return port.device
+            # Also check the hardware ID string as fallback
+            hwid = (port.hwid or '').upper()
+            if 'VID_33C3' in hwid and 'PID_F101' in hwid:
+                print(f'DS916 auto-detected on {port.device} via HWID match')
+                return port.device
+    except Exception as e:
+        print(f'Port detection error: {e}')
+    return None
+
 def open_port():
     global _port
     try:
         if _port and _port.is_open: _port.close()
-        _port = serial.Serial(cfg['com_port'], baudrate=115200, timeout=2)
+        # Auto-detect DS916 port; fall back to config value
+        detected = detect_ds916_port()
+        if detected and detected != cfg['com_port']:
+            print(f'Updating COM port: {cfg["com_port"]} → {detected}')
+            cfg['com_port'] = detected
+            save_cfg(cfg)
+        port_to_use = cfg['com_port']
+        _port = serial.Serial(port_to_use, baudrate=115200, timeout=2)
+        print(f'Opened {port_to_use}')
         return True
     except Exception as e:
         print(f'Port error: {e}')
@@ -831,42 +873,51 @@ def open_settings():
     lbl(t1, 'COM Port:', 0)
     com_var = tk.StringVar(value=cfg['com_port'])
     ports = [p.device for p in serial.tools.list_ports.comports()]
-    ttk.Combobox(t1, textvariable=com_var, values=ports, width=14, state='readonly').grid(
+    ttk.Combobox(t1, textvariable=com_var, values=ports, width=10, state='readonly').grid(
         row=0, column=1, sticky='w', padx=8, pady=4)
+    def auto_detect_port():
+        found = detect_ds916_port()
+        if found:
+            com_var.set(found)
+            toast_lbl.config(text=f'✅ DS916 found on {found}', foreground='#4fc87a')
+        else:
+            toast_lbl.config(text='DS916 not found — is it plugged in?', foreground='#e05a4b')
+    ttk.Button(t1, text='Auto-detect', command=auto_detect_port).grid(
+        row=0, column=2, padx=4, pady=4)
+    toast_lbl = ttk.Label(t1, text='', font=('Segoe UI', 8), foreground='#4fc87a')
+    toast_lbl.grid(row=1, column=0, columnspan=3, sticky='w', padx=8)
 
-    lbl(t1, 'FPS:', 1)
+    lbl(t1, 'FPS:', 2)
     fps_var = tk.IntVar(value=cfg.get('fps', 6))
     ttk.Spinbox(t1, from_=1, to=30, textvariable=fps_var, width=6).grid(
-        row=1, column=1, sticky='w', padx=8, pady=4)
+        row=2, column=1, sticky='w', padx=8, pady=4)
 
-    lbl(t1, 'HWiNFO Source:', 2)
-    # Read actual current source from cfg, default to sharedmem
+    lbl(t1, 'HWiNFO Source:', 3)
     current_src = cfg.get('hwinfo_source', 'sharedmem')
     src_options = ['sharedmem', 'registry']
     src_var = tk.StringVar(value=current_src)
     src_cb = ttk.Combobox(t1, textvariable=src_var, values=src_options,
                           width=14, state='readonly')
-    src_cb.grid(row=2, column=1, sticky='w', padx=8, pady=4)
-    # Force selection to current value
+    src_cb.grid(row=3, column=1, sticky='w', padx=8, pady=4)
     if current_src in src_options:
         src_cb.current(src_options.index(current_src))
     ttk.Label(t1, text='sharedmem = richer data  |  registry = no time limit',
               font=('Segoe UI', 8), foreground='#555').grid(
-        row=3, column=0, columnspan=3, sticky='w', padx=8)
+        row=4, column=0, columnspan=3, sticky='w', padx=8)
 
-    lbl(t1, 'Theme File:', 4)
+    lbl(t1, 'Theme File:', 5)
     theme_var = tk.StringVar(value=cfg.get('theme_path', ''))
     ttk.Entry(t1, textvariable=theme_var, width=28).grid(
-        row=4, column=1, sticky='ew', padx=8, pady=4)
+        row=5, column=1, sticky='ew', padx=8, pady=4)
     def browse_theme():
         p = filedialog.askopenfilename(
             parent=win, filetypes=[('DS916 Theme', '*.ds916theme *.zip')])
         if p: theme_var.set(p)
-    ttk.Button(t1, text='Browse…', command=browse_theme).grid(row=4, column=2, padx=4, pady=4)
+    ttk.Button(t1, text='Browse…', command=browse_theme).grid(row=5, column=2, padx=4, pady=4)
 
     auto_var = tk.BooleanVar(value=cfg.get('autostart', True))
     ttk.Checkbutton(t1, text='Start display automatically with Windows',
-                    variable=auto_var).grid(row=5, column=0, columnspan=3, sticky='w', padx=8, pady=6)
+                    variable=auto_var).grid(row=6, column=0, columnspan=3, sticky='w', padx=8, pady=6)
 
     # ── Tab 2: HWiNFO ────────────────────────────────────────────────────────
     t3 = ttk.Frame(nb); nb.add(t3, text='  HWiNFO  ')
@@ -1200,11 +1251,10 @@ def _show_status_main():
 
     win = tk.Toplevel(_tk_root)
     win.title('DS916 Status')
-    win.geometry('440x480')
     win.configure(bg='#0f0f11')
     win.resizable(True, True)
     win.minsize(380, 360)
-    win.lift(); win.focus_force()
+    win.withdraw()  # hide until sized correctly
     _status_win = win
 
     BG   = '#0f0f11'
@@ -1323,15 +1373,34 @@ def _show_status_main():
     row(s4, 'Windows Startup', '✅ Enabled' if is_autostart() else '○ Disabled',
         GRN if is_autostart() else MUT)
 
-    # Buttons (inside inner so they scroll with content)
-    btn_f = tk.Frame(inner, bg=BG)
-    btn_f.pack(fill='x', padx=12, pady=10)
-    tk.Button(btn_f, text='↻ Refresh', bg=PAN, fg=ACC,
+    # Spacer at bottom of scroll area
+    tk.Frame(inner, bg=BG, height=8).pack()
+
+    # Buttons outside scroll area (always visible at bottom)
+    btn_frame = tk.Frame(win, bg=BG)
+    btn_frame.pack(fill='x', padx=12, pady=8, side='bottom')
+    tk.Button(btn_frame, text='↻ Refresh', bg=PAN, fg=ACC,
               font=('Segoe UI', 9), bd=0, padx=12, pady=4,
               command=lambda: [win.destroy(), _show_status_main()]).pack(side='left')
-    tk.Button(btn_f, text='Close', bg=PAN, fg=TXT,
+    tk.Button(btn_frame, text='Close', bg=PAN, fg=TXT,
               font=('Segoe UI', 9), bd=0, padx=12, pady=4,
               command=win.destroy).pack(side='right')
+
+    # Size and show — build was hidden so no flash
+    win.update_idletasks()
+    screen_h = win.winfo_screenheight()
+    screen_w = win.winfo_screenwidth()
+    content_h = (inner.winfo_reqheight() + hdr.winfo_reqheight() +
+                 btn_frame.winfo_reqheight() + 40)
+    final_h = min(content_h, int(screen_h * 0.9))
+    final_w = min(460, int(screen_w * 0.9))
+    x = (screen_w - final_w) // 2
+    y = (screen_h - final_h) // 2
+    win.geometry(f'{final_w}x{final_h}+{x}+{y}')
+    win.maxsize(int(screen_w * 0.95), int(screen_h * 0.95))
+    win.deiconify()  # show now that size is correct
+    win.lift()
+    win.focus_force()
 
 def discover_sensors_tray(icon=None, item=None):
     _dispatch(_discover_sensors_main)

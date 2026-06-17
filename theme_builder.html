@@ -25,7 +25,7 @@ body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,san
 #zv{color:var(--accent);font-size:12px;min-width:34px;text-align:center}
 #main{display:flex;flex:1;overflow:hidden}
 /* SIDEBAR */
-#sidebar{width:228px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
+#sidebar{width:252px;background:var(--panel);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;flex-shrink:0}
 .sh{padding:7px 10px 5px;font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);flex-shrink:0}
 #sbar-top{display:flex;gap:0;flex-shrink:0;border-bottom:1px solid var(--border)}
 #sbar-search{background:var(--panel2);border:none;color:var(--text);padding:6px 10px;font-size:12px;flex:1;outline:none}
@@ -203,7 +203,8 @@ let snapEnabled=true;
 // ── SENSOR DEFINITIONS ────────────────────────────────────────────────────────
 const SEN={
   // Time — these are NOT sensor values; handled specially
-  CLOCK:       {l:'Clock',           u:'',     s:'12:34 PM',   max:null, cat:'time'},
+  CLOCK:       {l:'Clock',           u:'',     s:'09:34 PM',   max:null, cat:'time'},
+  CLOCKSEC:    {l:'Clock (seconds)', u:'',     s:'09:34:56 PM', max:null, cat:'time'},
   DATE:        {l:'Date',            u:'',     s:'16-06-2026', max:null, cat:'time'},
   WEEKDAY:     {l:'Day of Week',     u:'',     s:'Tuesday',    max:null, cat:'time'},
   // CPU
@@ -227,6 +228,7 @@ const SEN={
   RAM_USED_GB: {l:'RAM Used',        u:'GB',   s:9.3, max:128,  cat:'ram'},
   RAM_FREE_GB: {l:'RAM Free',        u:'GB',   s:6.7, max:128,  cat:'ram'},
   RAM_TOTAL:   {l:'RAM Total',       u:'GB',   s:16,  max:null, cat:'ram'},
+  RAM_FREE_GB: {l:'RAM Free',        u:'GB',   s:6.7, max:128,  cat:'ram'},
   // Storage
   DISK_USAGE:  {l:'Disk Usage',      u:'%',    s:62,  max:100,  cat:'storage'},
   DISK_USED:   {l:'Disk Used',       u:'GB',   s:310, max:2000, cat:'storage'},
@@ -243,16 +245,35 @@ const SEN={
   NET_DOWN:    {l:'Download Speed',  u:'MB/s', s:45,  max:null, cat:'network'},
   NET_UP:      {l:'Upload Speed',    u:'MB/s', s:12,  max:null, cat:'network'},
   NET_PING:    {l:'Ping',            u:'ms',   s:8,   max:null, cat:'network'},
+  FRAMERATE:   {l:'Framerate (Displayed)', u:'FPS', s:120, max:null, cat:'network'},
   // System
   BATTERY:     {l:'Battery',         u:'%',    s:85,  max:100,  cat:'system'},
 };
 
 // Default visible sensor keys in palette
 let visibleSensors=new Set([
-  'CLOCK','DATE','WEEKDAY',
+  // Time
+  'CLOCK','CLOCKSEC','DATE','WEEKDAY',
+  // CPU
   'CPU_USAGE','CPU_TEMP','CPU_FAN',
+  // GPU
   'GPU_USAGE','GPU_TEMP','GPU_FAN1','GPU_FAN2','VRAM_USAGE',
-  'MB_TEMP','CHASSIS_FAN1','CHASSIS_FAN2'
+  // RAM
+  'RAM_USAGE','RAM_TOTAL',
+  // Storage
+  'DISK_READ','DISK_WRITE',
+  // Network
+  'NET_DOWN','NET_UP',
+  // Fans & MOBO
+  'MB_TEMP','CHASSIS_FAN1','CHASSIS_FAN2','CHASSIS_FAN3',
+  // Gaming
+  'FRAMERATE',
+]);
+
+// Sensors that show ALL element variants (text+bar+ring+graph+preset)
+// Others show only text + preset to keep the palette clean
+const FULL_PALETTE_KEYS=new Set([
+  'CPU_USAGE','CPU_TEMP','GPU_USAGE','GPU_TEMP','RAM_USAGE','VRAM_USAGE'
 ]);
 
 // HWiNFO registry index map
@@ -299,7 +320,7 @@ function pVal(key){
   const v=(SEN[key]||{s:'0'}).s;
   return typeof v==='number'?String(v):v;
 }
-const TIME_KEYS=new Set(['CLOCK','DATE','WEEKDAY']);
+const TIME_KEYS=new Set(['CLOCK','CLOCKSEC','DATE','WEEKDAY']);
 const isTimeEl=el=>TIME_KEYS.has(el.type)||TIME_KEYS.has(el.sensorKey);
 
 // ── PALETTE ───────────────────────────────────────────────────────────────────
@@ -314,7 +335,7 @@ const CATS=[
   {id:'system', label:'⚙ System'},
   {id:'_static',label:'✏ Static / Decorative'},
 ];
-const DEFAULT_OPEN_CATS=new Set(['time','cpu','gpu','fans']);
+const DEFAULT_OPEN_CATS=new Set(['time','cpu','gpu','fans','ram','storage','network','system','_static']);
 
 function buildPalette(){
   const el=$('elist');el.innerHTML='';
@@ -337,13 +358,17 @@ function buildPalette(){
     } else {
       for(const [key,s] of Object.entries(SEN).filter(([k,v])=>v.cat===cat.id)){
         if(!visibleSensors.has(key))continue;
+        const isFull=FULL_PALETTE_KEYS.has(key);
+        // Always show text value
         items.appendChild(makeEi('text',key,s.u,s.l+' Value','→ text','ic-t',cat.id));
-        if(s.max!==null){
+        // Show bar/ring/graph only for key sensors or time
+        if(isFull&&s.max!==null){
           items.appendChild(makeEi('bar',key,'',s.l+' Bar','→ bar','ic-b',cat.id));
           items.appendChild(makeEi('ring',key,'',s.l+' Ring','→ ring','ic-r',cat.id));
         }
-        if(typeof s.s==='number')
+        if(isFull&&typeof s.s==='number')
           items.appendChild(makeEi('linegraph',key,'',s.l+' Graph','→ graph','ic-l',cat.id));
+        // Preset only for sensors with a max value
         if(s.max!==null||typeof s.s==='number')
           items.appendChild(makeEi('preset',key,s.u,s.l+' Preset','label+value+bar','ic-p',cat.id));
       }
@@ -402,25 +427,25 @@ function openSensorPicker(){
   for(const[cat,keys]of Object.entries(cats)){
     html+=`<div class="sen-cat-title">${catLabel[cat]||cat}</div>`;
     for(const k of keys){
-      html+=`<div class="sen-item"><input type="checkbox" id="sc_${k}" value="${k}" ${visibleSensors.has(k)?'checked':''}>
-        <label for="sc_${k}">${SEN[k].l}</label></div>`;
+      html+=`<div class="sen-item"><input type="checkbox" id="sc_${k}" value="${k}" ${visibleSensors.has(k)?'checked':''}><label for="sc_${k}">${SEN[k].l}</label></div>`;
     }
   }
-  m.innerHTML=`<div class="modal" style="max-width:520px">
-    <h2>＋ Sensor Palette</h2>
-    <p style="font-size:11px;color:var(--muted);margin-bottom:10px">Choose which sensors appear in the element palette.</p>
-    <div style="display:flex;gap:8px;margin-bottom:8px">
+  m.innerHTML=`<div class="modal" style="max-width:520px;display:flex;flex-direction:column;max-height:80vh;padding-bottom:0">
+    <h2 style="flex-shrink:0">&#xff0b; Sensor Palette</h2>
+    <p style="font-size:11px;color:var(--muted);margin-bottom:10px;flex-shrink:0">Choose which sensors appear in the element palette.</p>
+    <div style="display:flex;gap:8px;margin-bottom:8px;flex-shrink:0">
       <button class="btn" style="font-size:11px" onclick="document.querySelectorAll('.sen-item input').forEach(i=>i.checked=true)">All</button>
       <button class="btn" style="font-size:11px" onclick="document.querySelectorAll('.sen-item input').forEach(i=>i.checked=false)">None</button>
     </div>
-    <div class="sen-grid">${html}</div>
-    <div class="mbtns">
+    <div class="sen-grid" style="overflow-y:auto;flex:1;min-height:0">${html}</div>
+    <div class="mbtns" style="flex-shrink:0;border-top:1px solid var(--border);padding:12px 0 16px">
       <button class="btn" onclick="this.closest('.mbg').remove()">Cancel</button>
       <button class="btn primary" onclick="saveSensorPicker(this.closest('.mbg'))">Apply</button>
     </div>
   </div>`;
   document.body.appendChild(m);
 }
+
 function saveSensorPicker(mbg){
   visibleSensors=new Set([...mbg.querySelectorAll('.sen-item input:checked')].map(i=>i.value));
   // Always keep static types
@@ -506,12 +531,12 @@ function add(type,key,unit,x,y,isPreset){
 
   const id=genId();const z=nextZ();
   // Determine the actual type for time-related keys
-  const actualType = key==='CLOCK'?'clock':key==='DATE'?'date':key==='WEEKDAY'?'weekday':type;
+  const actualType = key==='CLOCK'?'clock':key==='CLOCKSEC'?'clock':key==='DATE'?'date':key==='WEEKDAY'?'weekday':type;
   let el={id,type:actualType,sensorKey:key,unit:unit||s.u||'',x,y,z,visible:true,prefix:'',manualSize:false};
 
   if(['text','static','clock','date','weekday'].includes(actualType)){
     Object.assign(el,{w:200,h:50,fontSize:32,fontFamily:'Consolas',color:'#ffffffff',bold:false,
-      align:'left',clockFormat:'12h',clockSeconds:true,dateFormat:'DD-MM-YYYY',
+      align:'left',clockFormat:'12h',clockSeconds:key==='CLOCKSEC',dateFormat:'DD-MM-YYYY',
       weekdayFormat:'full',customText:'Label',manualSize:false});
   } else if(actualType==='bar'){
     Object.assign(el,{w:320,h:18,fillColor:'#00b4ffff',borderColor:'#00000000',bgColor:'#1a1a2299',
@@ -572,7 +597,8 @@ function renderEl(el){
     let txt='';
     if(el.type==='clock'){
       const fmt=el.clockFormat||'12h',secs=el.clockSeconds!==false;
-      txt=fmt==='12h'?(secs?'12:34:56 PM':'12:34 PM'):(secs?'14:34:56':'14:34');
+      // With seconds: zero-padded (stable). Without: no leading zero.
+      txt=fmt==='12h'?(secs?'09:34:56 PM':'9:34 PM'):(secs?'14:34:56':'14:34');
     } else if(el.type==='date'){
       const fmt=el.dateFormat||'DD-MM-YYYY';
       txt=fmt.replace('MMMM','June').replace('MMM','Jun').replace('MM','06').replace('DD','16').replace('YYYY','2026').replace('YY','26');
@@ -582,7 +608,7 @@ function renderEl(el){
       txt=el.customText||'Label';
     } else {
       // sensor text
-      txt=(el.prefix||'')+pVal(el.sensorKey)+(el.unit||'');
+      txt=(el.prefix||'')+pVal(el.sensorKey)+((el.unit)?(' '+el.unit):'');
     }
     const ss=`font-size:${el.fontSize||32}px;font-family:'${el.fontFamily||'Consolas'}',monospace,sans-serif;color:${a2css(el.color||'#ffffffff')};font-weight:${el.bold?700:400};white-space:nowrap;line-height:1.15;display:inline-block`;
     if(autosize){
@@ -1105,72 +1131,6 @@ function saveSensorMap(mbg){
   });mbg.remove();toast('Sensor map saved');
 }
 
-// ── EXPORT — single .ds916theme file with all assets embedded as base64 ──────
-async function exportTheme(){
-  const name=$('themeName').value.trim()||'MyTheme';
-
-  const theme={
-    name,width:CW,height:CH,
-    background:'#111114',
-    backgroundImage:backData?.data||null,
-    backgroundImageName:backData?.name||null,
-    sensorMap,themeColors,
-    visibleSensors:[...visibleSensors],
-    // Embed all custom font files so renderer can use them
-    customFonts: Object.entries(fontFiles).map(([family,f])=>({
-      family, filename:f.name, data:f.data
-    })),
-    elements:elems.map(el=>{
-      const e={...el};
-      delete e.file;delete e._pil_image;
-      return e;
-    })
-  };
-
-  const json=JSON.stringify(theme,null,2);
-  const blob=new Blob([json],{type:'application/json'});
-  const url=URL.createObjectURL(blob);
-  const a=document.createElement('a');a.href=url;a.download=name+'.ds916theme';a.click();
-  setTimeout(()=>URL.revokeObjectURL(url),2000);
-  toast('Saved: '+name+'.ds916theme');
-}
-
-// ── IMPORT ────────────────────────────────────────────────────────────────────
-async function importTheme(){
-  pick('.ds916theme,.zip',async f=>{
-    try{
-      let theme;
-      if(f.name.endsWith('.ds916theme')){
-        theme=JSON.parse(await f.text());
-      } else {
-        // ZIP fallback for old format
-        const zip=await JSZip.loadAsync(f);
-        const imageMap={};
-        for(const[name,entry]of Object.entries(zip.files)){
-          if(/\.(png|jpg|jpeg|gif|mp4|avi|wmv)$/i.test(name)&&!entry.dir){
-            const ab=await entry.async('arraybuffer');
-            const ext=name.split('.').pop().toLowerCase();
-            const mime={'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','gif':'image/gif','mp4':'video/mp4'}[ext]||'image/png';
-            imageMap[name.toLowerCase()]=URL.createObjectURL(new Blob([ab],{type:mime}));
-          }
-        }
-        const tf=Object.keys(zip.files).find(n=>n.endsWith('.ds916theme'));
-        if(!tf){toast('No .ds916theme found in ZIP');return;}
-        theme=JSON.parse(await zip.files[tf].async('string'));
-        // Patch image element data from ZIP
-        for(const el of theme.elements||[]){
-          if(el.type==='image'&&el.filename&&!el.data)
-            el.data=imageMap[el.filename.toLowerCase()]||null;
-        }
-        // Patch background
-        const bk=Object.keys(imageMap).find(k=>/^back\./i.test(k));
-        if(bk&&!theme.backgroundImage){theme.backgroundImage=imageMap[bk];theme.backgroundImageName=bk;}
-      }
-      loadThemeJson(theme);
-    }catch(e){toast('Import error: '+e.message);}
-  });
-}
-
 function loadThemeJson(theme){
   clearAll();
   if(theme.sensorMap)Object.assign(sensorMap,theme.sensorMap);
@@ -1190,7 +1150,7 @@ function loadThemeJson(theme){
     nid=Math.max(nid,parseInt(el.id.replace('el_',''))+1);
     nz=Math.max(nz,el.z+1);
   }
-  buildPalette();refreshLayers();updStatus();setTimeout(()=>chZoom(0),80);
+  refreshLayers();updStatus();setTimeout(()=>chZoom(0),80);
   toast('Loaded: '+(theme.name||'theme'));
 }
 
@@ -1236,39 +1196,14 @@ function loadFontFile(){
 }
 
 // ── SENSOR FILE IMPORT ────────────────────────────────────────────────────────
-// ds916sensors.json is generated by the tray app (Discover Sensors menu item)
-// and saved to %APPDATA%\DS916Tray\ds916sensors.json
+// ds916sensors.json → %APPDATA%\DS916Tray\ds916sensors.json
+// Themes              → %APPDATA%\DS916Tray\Themes\
 
-let discoveredSensors = [];  // [{index, type, name, unit, sample}]
+const APPDATA_PATH = '%APPDATA%\\DS916Tray';
+const SENSORS_PATH = APPDATA_PATH + '\\ds916sensors.json';
+const THEMES_PATH  = APPDATA_PATH + '\\Themes';
 
-function importSensorList(silent=false){
-  pick('.json', f=>{
-    const r=new FileReader();
-    r.onload=ev=>{
-      try{
-        const data=JSON.parse(ev.target.result);
-        if(!data.sensors||!Array.isArray(data.sensors)) throw new Error('Invalid sensor file format');
-        discoveredSensors=data.sensors;
-        // Merge discovered sensors into SEN for palette and dropdowns
-        for(const s of discoveredSensors){
-          const key=`CUSTOM_${s.index}`;
-          if(!SEN[key]){
-            SEN[key]={
-              l:s.name, u:s.unit||'', s:s.sample||0,
-              max:['Temperature','Usage','Fan'].includes(s.type)?getDefaultMax(s):null,
-              cat:getCat(s.type)
-            };
-            sensorMap[key]=s.index;
-            visibleSensors.add(key);
-          }
-        }
-        buildPalette();
-        toast(`✅ ${discoveredSensors.length} sensors loaded from ${f.name}`);
-      }catch(e){toast('Sensor file error: '+e.message);}
-    };
-    r.readAsText(f);
-  });
-}
+let discoveredSensors = [];
 
 function getDefaultMax(s){
   if(s.type==='Temperature') return 110;
@@ -1277,12 +1212,141 @@ function getDefaultMax(s){
   if(s.type==='Power') return 500;
   return null;
 }
-
 function getCat(type){
-  if(type==='Temperature'||type==='Fan') return 'fans';
-  if(type==='Usage') return 'system';
-  if(type==='Power'||type==='Voltage'||type==='Current') return 'system';
-  return 'system';
+  const m={Temperature:'fans',Fan:'fans',Usage:'cpu',Voltage:'system',Current:'system',Power:'system'};
+  return m[type]||'system';
+}
+
+function applySensorData(data, filename){
+  if(!data.sensors||!Array.isArray(data.sensors)) throw new Error('Invalid sensor file');
+  discoveredSensors=data.sensors;
+  for(const s of discoveredSensors){
+    const key=`CUSTOM_${s.index}`;
+    if(!SEN[key]){
+      SEN[key]={l:s.name,u:s.unit||'',s:s.sample||0,
+        max:getDefaultMax(s),cat:getCat(s.type)};
+      sensorMap[key]=s.index;
+      // Only auto-add to palette if it matches a standard key name
+      // Users can add others via the ＋ Sensors picker
+      const stdNames={
+        'Total CPU Usage':'CPU_USAGE','CPU (Tctl/Tdie)':'CPU_TEMP',
+        'GPU Core Load':'GPU_USAGE','GPU Temperature':'GPU_TEMP',
+        'Physical Memory Load':'RAM_USAGE','Motherboard':'MB_TEMP',
+        'Framerate Displayed (avg)':'FRAMERATE',
+      };
+      if(Object.keys(stdNames).includes(s.name)){
+        visibleSensors.add(key);
+      }
+    }
+  }
+  buildPalette();
+  toast(`✅ ${discoveredSensors.length} sensors available — use ＋ Sensors to add to palette`+(filename?' ('+filename+')':''));
+}
+
+async function importSensorList(){
+  if(window.showOpenFilePicker){
+    try{
+      const [fh]=await window.showOpenFilePicker({
+        id:'ds916sensors',
+        suggestedName:'ds916sensors.json',
+        types:[{description:'DS916 Sensor File',accept:{'application/json':['.json']}}],
+      });
+      const text=await (await fh.getFile()).text();
+      applySensorData(JSON.parse(text), fh.name);
+      return;
+    }catch(e){if(e.name==='AbortError')return;}
+  }
+  // Fallback: standard file input
+  pick('.json',f=>{
+    const r=new FileReader();
+    r.onload=ev=>{
+      try{applySensorData(JSON.parse(ev.target.result),f.name);}
+      catch(e){toast('Sensor file error: '+e.message);}
+    };
+    r.readAsText(f);
+  });
+}
+
+async function exportTheme(){
+  const name=$('themeName').value.trim()||'MyTheme';
+  const theme={
+    name,width:CW,height:CH,background:'#111114',
+    backgroundImage:backData?.data||null,
+    backgroundImageName:backData?.name||null,
+    sensorMap,themeColors,
+    visibleSensors:[...visibleSensors],
+    customFonts:Object.entries(fontFiles).map(([family,f])=>({family,filename:f.name,data:f.data})),
+    elements:elems.map(el=>{const e={...el};delete e.file;delete e._pil_image;return e;})
+  };
+  const json=JSON.stringify(theme,null,2);
+  // Try File System Access API — starts in Themes folder suggestion
+  if(window.showSaveFilePicker){
+    try{
+      const fh=await window.showSaveFilePicker({
+        id:'ds916theme',
+        suggestedName:name+'.ds916theme',
+        types:[{description:'DS916 Theme',accept:{'application/json':['.ds916theme']}}],
+      });
+      const w=await fh.createWritable();
+      await w.write(json);
+      await w.close();
+      toast('Saved: '+name+'.ds916theme');
+      return;
+    }catch(e){if(e.name==='AbortError')return;}
+  }
+  // Fallback: download
+  const blob=new Blob([json],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download=name+'.ds916theme';a.click();
+  setTimeout(()=>URL.revokeObjectURL(url),2000);
+  toast('Saved: '+name+'.ds916theme');
+}
+
+async function importTheme(){
+  if(window.showOpenFilePicker){
+    try{
+      const [fh]=await window.showOpenFilePicker({
+        id:'ds916theme',
+        types:[{description:'DS916 Theme',accept:{'application/json':['.ds916theme','.zip']}}],
+      });
+      const f=await fh.getFile();
+      if(f.name.endsWith('.ds916theme')){
+        loadThemeJson(JSON.parse(await f.text()));
+      } else {
+        await importZip(f);
+      }
+      return;
+    }catch(e){if(e.name==='AbortError')return;}
+  }
+  // Fallback
+  pick('.ds916theme,.zip',async f=>{
+    try{
+      if(f.name.endsWith('.ds916theme')) loadThemeJson(JSON.parse(await f.text()));
+      else await importZip(f);
+    }catch(e){toast('Import error: '+e.message);}
+  });
+}
+
+async function importZip(f){
+  const zip=await JSZip.loadAsync(f);
+  const imageMap={};
+  for(const[name,entry]of Object.entries(zip.files)){
+    if(/\.(png|jpg|jpeg|gif|mp4|avi|wmv)$/i.test(name)&&!entry.dir){
+      const ab=await entry.async('arraybuffer');
+      const ext=name.split('.').pop().toLowerCase();
+      const mime={'jpg':'image/jpeg','jpeg':'image/jpeg','png':'image/png','gif':'image/gif','mp4':'video/mp4'}[ext]||'image/png';
+      imageMap[name.toLowerCase()]=URL.createObjectURL(new Blob([ab],{type:mime}));
+    }
+  }
+  const tf=Object.keys(zip.files).find(n=>n.endsWith('.ds916theme'));
+  if(!tf){toast('No .ds916theme found in ZIP');return;}
+  const theme=JSON.parse(await zip.files[tf].async('string'));
+  for(const el of theme.elements||[]){
+    if(el.type==='image'&&el.filename&&!el.data) el.data=imageMap[el.filename.toLowerCase()]||null;
+  }
+  const bk=Object.keys(imageMap).find(k=>/^back\./i.test(k));
+  if(bk&&!theme.backgroundImage){theme.backgroundImage=imageMap[bk];theme.backgroundImageName=bk;}
+  loadThemeJson(theme);
 }
 
 function promptSensorImport(){
@@ -1290,16 +1354,14 @@ function promptSensorImport(){
   modal.innerHTML=`<div class="modal" style="max-width:480px">
     <h2>🔍 Import Sensor List</h2>
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
-      To display system-specific sensors (custom fan headers, liquid temps, etc.),
-      import a <b style="color:var(--text)">ds916sensors.json</b> file generated by the tray app.<br><br>
-      <b style="color:var(--accent)">How to generate it:</b><br>
-      1. Make sure HWiNFO64 is running with Shared Memory enabled<br>
-      2. Right-click the DS916 tray icon → <b style="color:var(--text)">🔍 Discover Sensors</b><br>
-      3. The file is saved to <code style="color:var(--accent)">%APPDATA%\\DS916Tray\\ds916sensors.json</code>
+      Import your system's sensor list so the palette shows all your hardware sensors.<br><br>
+      <b style="color:var(--accent)">The file is at:</b><br>
+      <code style="color:var(--text);background:var(--panel2);padding:3px 6px;border-radius:3px;display:inline-block;margin:4px 0">%APPDATA%\DS916Tray\ds916sensors.json</code><br><br>
+      If the file doesn't exist yet, run the DS916 tray app first — it generates the file automatically on startup.
     </p>
     <div class="mbtns">
       <button class="btn" onclick="this.closest('.mbg').remove()">Skip for now</button>
-      <button class="btn primary" onclick="this.closest('.mbg').remove();importSensorList()">📂 Import Sensor File…</button>
+      <button class="btn primary" onclick="this.closest('.mbg').remove();importSensorList()">📂 Browse for file…</button>
     </div>
   </div>`;
   document.body.appendChild(modal);

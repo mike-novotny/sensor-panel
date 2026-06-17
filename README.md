@@ -140,14 +140,14 @@ python --version
 | Setting | Why |
 |---------|-----|
 | ✅ **Minimize Main Window on Startup** | Keeps HWiNFO out of the way at startup |
-| ✅ **Minimize Sensors on Startup** | Same — sensors run in the background |
+| ✅ **Minimize Sensors on Startup** | Sensors run in the background |
 | ✅ **Minimize Sensors instead of Closing** | Prevents accidentally stopping sensor data |
 | ✅ **Auto Start** | HWiNFO launches automatically with Windows |
 | ✅ **Shared Memory Support** | **Required** — allows the tray app to read sensor data |
 
 > **Optional:** Uncheck **Automatic Update** to prevent HWiNFO from showing update popups. If you disable this you will need to manually check for updates at https://www.hwinfo.com
 
-5. Click **OK** and close the Settings window
+5. Click **OK** and close Settings
 6. HWiNFO will now start minimized to the system tray on every boot
 
 ### Step 3 — Download the Sensor Panel Files
@@ -156,7 +156,7 @@ Download or clone this repository:
 ```
 git clone https://github.com/mike-novotny/sensor-panel.git
 ```
-Or download the ZIP from the GitHub page and extract it to a folder of your choice (e.g. `D:\SensorPanel\`).
+Or download the ZIP from the GitHub page and extract it to a folder of your choice.
 
 ### Step 4 — Build the Tray App
 
@@ -170,36 +170,70 @@ This will:
 2. Compile `ds916_tray.py` into a standalone `dist\DS916Tray.exe`
 3. Copy `theme_builder.html` into the `dist\` folder
 
-> The build takes 1-3 minutes. When it finishes you'll find everything you need in the `dist\` folder.
+> The build takes 1-3 minutes. When it finishes everything you need is in the `dist\` folder.
 
 ### Step 5 — First Launch
 
 1. Navigate to the `dist\` folder
 2. Double-click **`DS916Tray.exe`**
-3. A small icon will appear in your system tray (bottom-right of the taskbar)
+3. A small icon appears in your system tray (bottom-right of the taskbar)
 4. The app will:
    - Add itself to Windows startup automatically
    - Connect to HWiNFO64 shared memory
    - **Discover all your sensors** and save them to `%APPDATA%\Roaming\DS916Tray\ds916sensors.json`
+   - Create a `%APPDATA%\Roaming\DS916Tray\Themes\` folder for storing your theme files
 
 > **Make sure JONSBO-AIO is fully closed** (including from the system tray) before running DS916Tray — both cannot use COM3 at the same time.
 
 ### Step 6 — Design a Theme
 
-1. Open **`theme_builder.html`** in Chrome or Edge (not Firefox — system font loading requires Chrome/Edge)
-2. When prompted, click **Import Sensor File** and navigate to:
-   `%APPDATA%\Roaming\DS916Tray\ds916sensors.json`
-   This loads all your specific hardware sensors into the palette
-3. Drag elements from the left panel onto the canvas
-4. Click any element to edit its properties in the right panel
-5. Click **💾 Save Theme** to export a `.ds916theme` file
+1. Open **`theme_builder.html`** in Chrome or Edge
+2. When prompted, click **Browse for file…** and navigate to `%APPDATA%\Roaming\DS916Tray\ds916sensors.json` to load your system's sensor list
+3. Design your theme (see [Theme Builder](#theme-builder) section below)
+4. Click **💾 Save Theme** and save to `%APPDATA%\Roaming\DS916Tray\Themes\`
 
 ### Step 7 — Load the Theme
 
 1. Right-click the DS916 tray icon
 2. Click **📂 Load Theme…**
-3. Select your `.ds916theme` file
+3. Navigate to `%APPDATA%\Roaming\DS916Tray\Themes\` and select your `.ds916theme` file
 4. The screen should immediately start displaying your theme
+
+---
+
+## Preparing Image Assets
+
+If you plan to use a background image or image layers, they must match the screen's resolution exactly.
+
+### Canvas Dimensions
+
+| Orientation | Width | Height |
+|-------------|-------|--------|
+| **Vertical** (default) | 462 px | 1920 px |
+| **Horizontal** | 1920 px | 462 px |
+
+Images that don't match these dimensions will be stretched to fit. For best results, create your background at exactly 462×1920 px (or 1920×462 px for landscape).
+
+### Recommended Tools
+
+Any image editor works — Photoshop, GIMP, Affinity Photo, or even Paint.NET. Create a new canvas at the correct dimensions, design your background, and export as PNG or JPG.
+
+For animated backgrounds, MP4 video files are supported (AVI and WMV also work). The video loops automatically and plays silently.
+
+### Background vs Image Layers
+
+The theme builder has two separate ways to add visual assets:
+
+**🖼 Background button** — sets the canvas background. This can be:
+- A static image (PNG, JPG, GIF)
+- A video file (MP4, AVI, WMV) — plays looped and silent behind all elements
+
+**+ Image button** — adds a transparent image layer **on top of** the background and behind or in front of sensor elements (controlled by z-order). Use this for:
+- Decorative overlays (borders, frames, logos)
+- Semi-transparent panels behind groups of sensors
+- Static artwork that sits above a video background
+
+You can add multiple image layers. Each behaves like any other element — drag to reposition, resize with the handle, adjust z-order in the Layers panel.
 
 ---
 
@@ -208,13 +242,13 @@ This will:
 | Option | Description |
 |--------|-------------|
 | **▶ Start Display** | Start streaming the current theme to the screen |
-| **⏹ Stop Display** | Stop streaming (screen returns to splash screen) |
+| **⏹ Stop Display** | Stop streaming |
 | **📂 Load Theme…** | Load a `.ds916theme` file |
-| **🎨 Open Theme Builder** | Opens `theme_builder.html` in your default browser |
+| **🎨 Open Theme Builder** | Opens `theme_builder.html` in your browser |
 | **🔍 Discover Sensors** | Re-scan HWiNFO64 and update `ds916sensors.json` |
-| **ℹ Status…** | Shows current status, sensor source, live sensor values |
-| **⚙ Settings…** | Configure COM port, FPS, HWiNFO source, sensor map |
-| **🗑 Uninstall…** | Remove from Windows startup and delete app data |
+| **ℹ Status…** | Live status: sensor source, COM port, sensor readings |
+| **⚙ Settings…** | COM port, FPS, HWiNFO source, sensor map, auto-restart |
+| **🗑 Uninstall…** | Remove from startup and delete app data |
 | **❌ Exit** | Close the tray app |
 
 ---
@@ -227,90 +261,98 @@ Open via tray icon → **⚙ Settings…**
 
 | Setting | Description |
 |---------|-------------|
-| **COM Port** | The serial port the DS916 is on (default: COM3) |
+| **COM Port** | Serial port for the DS916 — click **Auto-detect** to find it automatically |
 | **FPS** | Frames per second to stream (default: 6, max: 30) |
-| **HWiNFO Source** | `sharedmem` for richer data, `registry` for no time limit |
+| **HWiNFO Source** | `sharedmem` for full sensor data, `registry` for no time limit |
 | **Theme File** | Path to the last loaded theme (auto-remembered) |
 | **Start with Windows** | Adds/removes the app from Windows startup |
 
+> **COM port auto-detection:** the app identifies the DS916 by its USB VID/PID (`33C3:F101`) and automatically updates the COM port setting if it changes between sessions.
+
 ### HWiNFO Tab
 
-Configure the **11.5-hour auto-restart workaround** for HWiNFO64 free edition's shared memory time limit:
+Configures the **11.5-hour auto-restart workaround** for HWiNFO64 free edition's shared memory time limit:
 
-1. Set the path to `HWiNFO64.exe` (click **Detect** to find it automatically)
-2. Click **Install Restart Task** to create a Windows Scheduled Task that silently restarts HWiNFO64 every 11.5 hours
-3. Click **Remove Task** to disable it
+1. Click **Detect** to find `HWiNFO64.exe` automatically
+2. Click **Install Restart Task** — creates a Windows Scheduled Task that silently restarts HWiNFO64 every 11.5 hours
+3. Status shows whether the task is currently installed
 
 ### Sensor Map Tab
 
-Maps sensor keys (like `CPU_USAGE`) to their HWiNFO shared memory index. These are populated automatically by **Discover Sensors** — you should rarely need to edit them manually.
+Maps sensor keys (`CPU_USAGE`, `GPU_TEMP`, etc.) to their HWiNFO shared memory index. Populated automatically by sensor discovery — you should rarely need to edit this manually.
 
 ---
 
 ## Theme Builder
 
-Open `theme_builder.html` in Chrome or Edge.
+Open `theme_builder.html` in **Chrome or Edge** (not Firefox — system font loading requires Chrome/Edge).
 
-### Layout
+### Interface Layout
 
 | Area | Description |
 |------|-------------|
 | **Left panel** | Element palette — drag or click to add to canvas |
-| **Center** | Canvas — drag to move, resize handle to resize |
+| **Center** | Canvas — drag elements to move, resize handle to resize |
 | **Right panel** | Properties for the selected element |
-| **Bottom** | Layers panel — visibility toggle, z-order, delete |
-| **Top bar** | Orientation, zoom, background, export |
+| **Bottom** | Layers panel — visibility, z-order, delete |
+| **Top bar** | Orientation, zoom, background, export controls |
 
-### Adding Elements
+### Adding a Background
 
-**Drag** an element from the left panel onto the canvas, or **click** it to place at a default position.
+1. Click **🖼 Background** in the top bar
+2. Select a PNG, JPG, GIF, or video file (MP4, AVI, WMV)
+3. The background appears behind all elements on the canvas
+4. The background is embedded into the `.ds916theme` file on export — no separate file needed
 
-**Preset elements** (marked ⊞) drop a label + value + bar group in one click — great for quickly building a sensor display.
+To add decorative image layers on top of the background, use **+ Image** instead. These layers can be positioned, resized, and z-ordered like any other element.
+
+### Loading Your Sensor List
+
+Click **🔍 Sensors** in the top bar to import `ds916sensors.json`. This loads all sensors from your specific hardware into the palette. Without this file, only standard sensor keys are available.
+
+The sensor list is generated automatically by the tray app on every startup. If the file doesn't exist yet, run DS916Tray.exe first.
 
 ### Element Types
 
 | Type | Description |
 |------|-------------|
-| **Clock** | Live time — 12h or 24h, with or without seconds |
-| **Date** | Live date — fully configurable format (DD-MM-YYYY, MM/DD/YYYY, etc.) |
+| **Clock** | Live time — 12h (no seconds, no leading zero) or 24h |
+| **Clock (seconds)** | Live time with seconds — 12h zero-padded for stable AM/PM position |
+| **Date** | Live date — configurable format (DD-MM-YYYY, MM/DD/YYYY, etc.) |
 | **Day of Week** | Full (Tuesday) or short (Tue) |
-| **Sensor Value** | Live sensor reading with optional prefix and unit suffix |
-| **Static Label** | Fixed text — double-click to edit |
-| **Bar** | Horizontal progress bar bound to a sensor |
-| **Ring Gauge** | Circular gauge bound to a sensor |
-| **Line Graph** | Scrolling history graph with configurable window |
+| **Sensor Value** | Live sensor reading with optional prefix and unit |
+| **Static Label** | Fixed text — double-click to edit inline |
+| **Bar** | Horizontal progress bar |
+| **Ring Gauge** | Circular gauge |
+| **Line Graph** | Scrolling history graph |
+| **Preset** (⊞) | Drops a label + value + bar group in one click |
 | **Rectangle** | Decorative divider or block |
-| **Image** | PNG/JPG overlay layer |
-
-### Resizing
-
-- **Text elements** — drag the resize handle (bottom-right corner) to scale font size
-- **Bars, graphs, rings** — drag the resize handle to change width/height
-- **Arrow keys** — nudge selected element 1px; hold Shift for 10px
-
-### Fonts
-
-The font section in the Properties panel has two buttons:
-
-- **🔍 System Fonts** — loads all fonts installed on your PC into the dropdown (Chrome/Edge only)
-- **📁 Font File…** — load a `.ttf` or `.otf` file directly; it's embedded in the theme on export so it works on any PC
+| **Image** | PNG/JPG overlay layer (above background) |
 
 ### Sensor Palette
 
-By default only the most common sensors are shown (Time, CPU, GPU, Fans). Use the **＋ Sensors** button to open the full sensor picker with checkboxes. Import a `ds916sensors.json` file (from the **🔍 Sensors** button) to see all sensors specific to your hardware.
+The palette shows a curated default set of sensors. Use the **＋ Sensors** button to open the full picker with checkboxes — select any sensor to add it to the palette. Importing a `ds916sensors.json` file adds your hardware-specific sensors (custom fans, liquid cooling temps, per-core data, etc.) to the picker.
+
+### Resizing Elements
+
+- **Text elements** — drag the resize handle (bottom-right corner) to scale **font size**
+- **Bars, graphs, rings, rectangles** — drag the resize handle to change **width/height**
+- **Arrow keys** — nudge 1px; Shift+arrow nudges 10px
+
+### Fonts
+
+In the Font section of the Properties panel:
+- **🔍 System Fonts** — loads all fonts installed on your PC (Chrome/Edge only)
+- **📁 Font File…** — loads a `.ttf` or `.otf` file; embedded in the theme on export so it works on any system
 
 ### Colors
 
-Each color field has:
-- A **color picker** for RGB selection
-- An **alpha (0-255)** field for transparency
-- A **+** button to save the color to the theme palette
-- **Palette swatches** showing saved colors — click any to apply
+Each color field has a color picker, an alpha (0-255) transparency field, a **+** button to save to the palette, and saved color swatches. Click any swatch to apply it.
 
 ### Export & Import
 
-- **💾 Save Theme** — exports a single `.ds916theme` file with all assets (background image, custom fonts, image layers) embedded as base64
-- **📂 Import** — loads a `.ds916theme` file (or legacy `.zip` format)
+- **💾 Save Theme** — saves a single `.ds916theme` file with all assets (background, fonts, image layers) embedded as base64. The file picker defaults to `%APPDATA%\DS916Tray\Themes\` after first use
+- **📂 Import** — loads a `.ds916theme` file. The file picker remembers the Themes folder
 
 ---
 
@@ -322,27 +364,44 @@ When the tray app starts with HWiNFO64 shared memory enabled, it automatically s
 %APPDATA%\Roaming\DS916Tray\ds916sensors.json
 ```
 
-This file contains every sensor HWiNFO64 exposes — including hardware-specific ones like additional fan headers, liquid cooling temps, per-core data, etc.
+This file contains every sensor HWiNFO64 exposes, including hardware-specific sensors like additional fan headers, liquid cooling temperatures, per-core data, and framerate metrics.
 
-**In the Theme Builder**, click **🔍 Sensors** to import this file. All discovered sensors will appear in the element palette, grouped by type, and can be used in any element.
+**In the Theme Builder**, click **🔍 Sensors** to import this file. All discovered sensors appear in the element palette via the **＋ Sensors** picker.
 
-**Re-run discovery** at any time via tray icon → **🔍 Discover Sensors** (e.g. after adding new hardware or updating HWiNFO64).
+**Re-run discovery** at any time via tray icon → **🔍 Discover Sensors** — for example after adding new hardware or updating HWiNFO64.
 
-> Sensor indices can vary between systems and HWiNFO versions. The tray app matches sensors by name (`"Total CPU Usage"`, `"CPU (Tctl/Tdie)"` etc.) rather than index, so they stay correct even if the order changes.
+> Sensor indices vary between systems and HWiNFO versions. The tray app matches sensors by name (`"Total CPU Usage"`, `"CPU (Tctl/Tdie)"`, `"Framerate Displayed (avg)"` etc.) rather than by index, so mappings stay correct even if the order changes.
+
+### Framerate Sensor
+
+For gaming metrics, use **`FRAMERATE`** which maps to `Framerate Displayed (avg)` — the frames actually shown on screen after VSync/G-Sync/FreeSync processing. This reflects the real-world experience rather than the raw GPU output rate.
 
 ---
 
 ## HWiNFO64 Shared Memory — 12-Hour Limit
 
-HWiNFO64 free edition disables shared memory after 12 hours. The tray app falls back to the registry (VSB Gadget) method automatically, but this provides fewer sensors.
+HWiNFO64 free edition disables shared memory after 12 hours. The tray app automatically falls back to registry (VSB Gadget) mode, but this provides fewer sensors.
 
-**Workaround options:**
+**Solutions:**
 
-1. **Auto-restart task** (recommended) — use Settings → HWiNFO tab to install a Windows Scheduled Task that restarts HWiNFO64 every 11.5 hours silently
-2. **Manual restart** — restart HWiNFO64 manually every 12 hours
-3. **Use registry mode** — change HWiNFO Source to `registry` in Settings; no time limit but requires manually adding sensors to the HWiNFO Gadget
+1. **Auto-restart task** (recommended) — Settings → HWiNFO tab → Install Restart Task. Creates a Windows Scheduled Task that silently restarts HWiNFO64 every 11.5 hours with no window appearing
+2. **Manual restart** — restart HWiNFO64 manually when needed
+3. **Registry mode** — change HWiNFO Source to `registry` in Settings. No time limit but requires configuring the HWiNFO Gadget manually
 
-Check the current source any time via tray icon → **ℹ Status…**
+Check the current source at any time via tray icon → **ℹ Status…**
+
+---
+
+## Status Window
+
+Right-click tray icon → **ℹ Status…** to see a live dashboard:
+
+- **Display** — streaming status, COM port, FPS, active theme name and resolution
+- **HWiNFO64 Sensor Source** — shows `Shared Memory ✅` or `Registry (fallback)` with yellow warning, plus whether the auto-restart task is installed
+- **Live Sensor Snapshot** — current values for CPU/GPU usage and temperature, motherboard temp, CPU fan
+- **System** — Windows startup status
+
+The window auto-sizes to its content (capped at 90% of your screen height) and has a **↻ Refresh** button to re-read all values.
 
 ---
 
@@ -350,13 +409,13 @@ Check the current source any time via tray icon → **ℹ Status…**
 
 Based on our reverse engineering:
 
-1. Reads a **`Setting.txt`** layout file from the theme folder defining element positions, sensor bindings, fonts, and colors
-2. Reads hardware sensor values via Windows APIs at a configurable polling interval (~10 seconds for some sensors, causing occasional display stutter)
+1. Reads a **`Setting.txt`** layout file defining element positions, sensor bindings, fonts and colors
+2. Reads hardware sensor values via Windows APIs at a configurable polling interval
 3. Composites all elements onto a canvas using **SkiaSharp**
-4. Encodes the result as a JPEG using **libjpeg-turbo**
-5. Sends the JPEG to the screen over COM3 using the protocol above, continuously at ~6fps
+4. Encodes the result as JPEG using **libjpeg-turbo**
+5. Sends the JPEG to COM3 continuously at ~6fps using the protocol documented above
 
-The `MSDISPLAYSDKWRRAPER.dll` is the PC-side SDK wrapper provided by ArtInChip. The device-side firmware runs on their **Luban-Lite** RTOS with CherryUSB.
+The `MSDISPLAYSDKWRRAPER.dll` is the PC-side SDK wrapper from ArtInChip. The device firmware runs on their **Luban-Lite** RTOS with CherryUSB.
 
 ---
 
@@ -373,65 +432,49 @@ Themes are saved as a single **`.ds916theme`** file — a JSON document with all
   "backgroundImage": "data:image/png;base64,...",
   "sensorMap": { "CPU_USAGE": 46, "CPU_TEMP": 94 },
   "themeColors": ["#00b4ffff", "#ff0000ff"],
-  "visibleSensors": ["CLOCK", "DATE", "CPU_USAGE", "CPU_TEMP"],
+  "visibleSensors": ["CLOCK", "CPU_USAGE", "CPU_TEMP"],
   "customFonts": [{"family": "MyFont", "filename": "MyFont.ttf", "data": "data:font/ttf;base64,..."}],
-  "elements": [
-    {
-      "id": "el_1",
-      "type": "clock",
-      "x": 10, "y": 20,
-      "w": 440, "h": 80,
-      "z": 10,
-      "visible": true,
-      "clockFormat": "12h",
-      "clockSeconds": true,
-      "fontSize": 72,
-      "fontFamily": "Consolas",
-      "bold": true,
-      "color": "#ffffffff",
-      "align": "center",
-      "manualSize": false
-    }
-  ]
+  "elements": [ ... ]
 }
 ```
 
-### Element Types
+### Element Types Reference
 
-| Type | Description | Key properties |
-|------|-------------|----------------|
-| `clock` | Live time | `clockFormat` (12h/24h), `clockSeconds` |
-| `date` | Live date | `dateFormat` (DD-MM-YYYY etc.) |
-| `weekday` | Day of week | `weekdayFormat` (full/short) |
-| `text` | Sensor value | `sensorKey`, `prefix`, `unit`, `manualSize` |
-| `static` | Fixed label | `customText`, `manualSize` |
-| `bar` | Progress bar | `sensorKey`, `maxValue`, `fillColor`, `bgColor` |
-| `ring` | Ring gauge | `sensorKey`, `maxValue`, `arcColor`, `trackColor`, `ringWidth` |
-| `linegraph` | Scrolling graph | `sensorKey`, `maxValue`, `lineColor`, `historySeconds` |
-| `rect` | Rectangle | `fillColor`, `cornerRadius` |
-| `image` | Image overlay | `data` (base64 data URL) |
+| Type | Key properties |
+|------|----------------|
+| `clock` | `clockFormat` (12h/24h), `clockSeconds` (true/false) |
+| `date` | `dateFormat` (DD-MM-YYYY etc.) |
+| `weekday` | `weekdayFormat` (full/short) |
+| `text` | `sensorKey`, `prefix`, `unit`, `manualSize` |
+| `static` | `customText`, `manualSize` |
+| `bar` | `sensorKey`, `maxValue`, `fillColor`, `bgColor`, `cornerRadius` |
+| `ring` | `sensorKey`, `maxValue`, `arcColor`, `trackColor`, `ringWidth` |
+| `linegraph` | `sensorKey`, `maxValue`, `lineColor`, `historySeconds` |
+| `rect` | `fillColor`, `cornerRadius` |
+| `image` | `data` (base64 data URL) |
 
-> **`manualSize`**: when `false` (default for text), the selection box auto-sizes to content. Dragging the resize handle on text scales font size; on other elements it resizes the widget.
+> **`manualSize`**: `false` (default for text) = box auto-sizes to content, resize handle scales font size. `true` = fixed dimensions, resize handle scales the widget.
 
-### Sensor Keys
+### Standard Sensor Keys
 
-Standard keys used in themes. Indices are mapped automatically from `ds916sensors.json`:
-
-| Key | Description |
-|-----|-------------|
-| `CPU_USAGE` | CPU utilisation % |
-| `CPU_TEMP` | CPU temperature |
-| `CPU_FAN` | CPU fan RPM |
-| `GPU_USAGE` | GPU core load % |
-| `GPU_TEMP` | GPU temperature |
-| `GPU_FAN1` / `GPU_FAN2` | GPU fan RPM |
-| `MB_TEMP` | Motherboard temperature |
-| `CHASSIS_FAN1` / `CHASSIS_FAN2` | Chassis fan RPM |
-| `RAM_USAGE` | RAM utilisation % |
-| `RAM_USED_GB` | RAM used in GB |
-| `VRAM_USAGE` | VRAM utilisation % |
-| `NET_DOWN` / `NET_UP` | Network speed |
-| `CUSTOM_N` | Any sensor discovered by index N |
+| Key | HWiNFO Source Name |
+|-----|-------------------|
+| `CPU_USAGE` | Total CPU Usage |
+| `CPU_TEMP` | CPU (Tctl/Tdie) |
+| `CPU_FAN` | CPU1 |
+| `GPU_USAGE` | GPU Core Load |
+| `GPU_TEMP` | GPU Temperature |
+| `GPU_FAN1` / `GPU_FAN2` | GPU Fan1 / GPU Fan2 |
+| `VRAM_USAGE` | GPU Memory Usage |
+| `MB_TEMP` | Motherboard |
+| `CHASSIS_FAN1/2/3` | Chassis1 / Chassis2 / Chassis3 |
+| `RAM_USAGE` | Physical Memory Load |
+| `RAM_USED_GB` | Physical Memory Used |
+| `RAM_TOTAL` | Physical Memory Total |
+| `DISK_READ` / `DISK_WRITE` | Read Rate / Write Rate |
+| `NET_DOWN` / `NET_UP` | Current DL rate / Current UP rate |
+| `FRAMERATE` | Framerate Displayed (avg) |
+| `CUSTOM_N` | Any sensor at shared memory index N |
 
 ---
 
@@ -441,10 +484,10 @@ Right-click the tray icon → **🗑 Uninstall…**
 
 This will:
 1. Remove DS916Tray from Windows startup
-2. Delete `%APPDATA%\Roaming\DS916Tray\` (config and sensor data)
+2. Delete `%APPDATA%\Roaming\DS916Tray\` (config, sensor data, themes folder)
 3. Close the app
 
-Then manually delete `DS916Tray.exe` and `theme_builder.html` from wherever you placed them.
+Then manually delete `DS916Tray.exe` and `theme_builder.html`.
 
 ---
 
@@ -452,9 +495,6 @@ Then manually delete `DS916Tray.exe` and `theme_builder.html` from wherever you 
 
 Confirmed working:
 - **Jonsbo DS916** ✅
-
-Likely compatible (same ArtInChip chip family, VID `0x33C3`):
-- Other Jonsbo AIO LCD panels
 
 If you get this working on another device, please open an issue or PR.
 
@@ -479,8 +519,8 @@ MIT — do whatever you want with it.
 
 ## Acknowledgements
 
-Protocol reverse-engineered using Wireshark + USBPcap on Windows 11.  
-HWiNFO shared memory format: https://gist.github.com/namazso/0c37be5a53863954c8c8279f66cfb1cc  
-ArtInChip Luban-Lite SDK: https://github.com/artinchip/luban-lite  
-CherryUSB: https://github.com/cherry-embedded/CherryUSB  
+Protocol reverse-engineered using Wireshark + USBPcap on Windows 11.
+HWiNFO shared memory format: https://gist.github.com/namazso/0c37be5a53863954c8c8279f66cfb1cc
+ArtInChip Luban-Lite SDK: https://github.com/artinchip/luban-lite
+CherryUSB: https://github.com/cherry-embedded/CherryUSB
 HWiNFO64: https://www.hwinfo.com
