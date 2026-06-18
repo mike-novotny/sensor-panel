@@ -218,55 +218,60 @@ let snapEnabled=true;
 // ── SENSOR DEFINITIONS ────────────────────────────────────────────────────────
 const SEN={
   // Time — these are NOT sensor values; handled specially
-  CLOCK:       {l:'Clock',           u:'',     s:'09:34 PM',   max:null, cat:'time'},
-  CLOCKSEC:    {l:'Clock (seconds)', u:'',     s:'09:34:56 PM', max:null, cat:'time'},
-  DATE:        {l:'Date',            u:'',     s:'16-06-2026', max:null, cat:'time'},
-  WEEKDAY:     {l:'Day of Week',     u:'',     s:'Tuesday',    max:null, cat:'time'},
+  CLOCK:       {l:'Clock',              u:'',     s:'09:34 PM',   max:null, cat:'time'},
+  CLOCKSEC:    {l:'Clock (seconds)',    u:'',     s:'09:34:56 PM',max:null, cat:'time'},
+  DATE:        {l:'Date',              u:'',     s:'16-06-2026', max:null, cat:'time'},
+  WEEKDAY:     {l:'Day of Week',        u:'',     s:'Tuesday',    max:null, cat:'time'},
   // CPU
-  CPU_USAGE:   {l:'CPU Usage',       u:'%',    s:42,  max:100,  cat:'cpu'},
-  CPU_TEMP:    {l:'CPU Temp',        u:'\u00B0C', s:52, max:110, cat:'cpu'},
-  CPU_FAN:     {l:'CPU Fan',         u:'RPM',  s:1200,max:3000, cat:'cpu'},
-  CPU_FREQ:    {l:'CPU Frequency',   u:'MHz',  s:3800,max:6000, cat:'cpu'},
-  CPU_POWER:   {l:'CPU Power',       u:'W',    s:65,  max:300,  cat:'cpu'},
-  CPU_VOLTAGE: {l:'CPU Voltage',     u:'V',    s:1.2, max:2,    cat:'cpu'},
+  CPU_USAGE:   {l:'CPU Usage',          u:'%',    s:42,  max:100,  cat:'cpu'},
+  CPU_TEMP:    {l:'CPU Temp',           u:'\u00B0C', s:52, max:110, cat:'cpu'},
+  CPU_FAN:     {l:'CPU Fan',            u:'RPM',  s:1200,max:3000, cat:'cpu'},
+  CPU_FREQ:    {l:'CPU Frequency',      u:'MHz',  s:3800,max:6000, cat:'cpu'},
+  CPU_POWER:   {l:'CPU Power',          u:'W',    s:65,  max:300,  cat:'cpu'},
+  CPU_VOLTAGE: {l:'CPU Voltage',        u:'V',    s:1.2, max:2,    cat:'cpu'},
   // GPU
-  GPU_USAGE:   {l:'GPU Usage',       u:'%',    s:67,  max:100,  cat:'gpu'},
-  GPU_TEMP:    {l:'GPU Temp',        u:'\u00B0C', s:61, max:110, cat:'gpu'},
-  GPU_FAN1:    {l:'GPU Fan 1',       u:'RPM',  s:1800,max:4000, cat:'gpu'},
-  GPU_FAN2:    {l:'GPU Fan 2',       u:'RPM',  s:1800,max:4000, cat:'gpu'},
-  GPU_FREQ:    {l:'GPU Core Clock',  u:'MHz',  s:1800,max:3000, cat:'gpu'},
-  GPU_POWER:   {l:'GPU Power',       u:'W',    s:200, max:500,  cat:'gpu'},
-  VRAM_USAGE:  {l:'VRAM Usage',      u:'%',    s:45,  max:100,  cat:'gpu'},
-  VRAM_USED:   {l:'VRAM Used',       u:'GB',   s:5.2, max:24,   cat:'gpu'},
+  GPU_USAGE:   {l:'GPU Usage',          u:'%',    s:67,  max:100,  cat:'gpu'},
+  GPU_TEMP:    {l:'GPU Temp',           u:'\u00B0C', s:61, max:110, cat:'gpu'},
+  GPU_FAN1:    {l:'GPU Fan 1',          u:'RPM',  s:1800,max:4000, cat:'gpu'},
+  GPU_FAN2:    {l:'GPU Fan 2',          u:'RPM',  s:1800,max:4000, cat:'gpu'},
+  GPU_FREQ:    {l:'GPU Core Clock',     u:'MHz',  s:1800,max:3000, cat:'gpu'},
+  GPU_POWER:   {l:'GPU Power',          u:'W',    s:200, max:500,  cat:'gpu'},
+  VRAM_USAGE:  {l:'VRAM Usage',         u:'%',    s:45,  max:100,  cat:'gpu'},
+  VRAM_USED:   {l:'VRAM Used',          u:'GB',   s:5.2, max:24,   cat:'gpu'},
   // RAM
-  RAM_USAGE:   {l:'RAM Usage',       u:'%',    s:58,  max:100,  cat:'ram'},
-  RAM_USED_GB: {l:'RAM Used',        u:'GB',   s:9.3, max:128,  cat:'ram'},
-  RAM_FREE_GB: {l:'RAM Free',        u:'GB',   s:6.7, max:128,  cat:'ram'},
-  RAM_TOTAL:   {l:'RAM Total',       u:'GB',   s:16,  max:null, cat:'ram'},
-  RAM_FREE_GB: {l:'RAM Free',        u:'GB',   s:6.7, max:128,  cat:'ram'},
+  RAM_USAGE:   {l:'RAM Usage',          u:'%',    s:58,  max:100,  cat:'ram'},
+  RAM_USED_GB: {l:'RAM Used',           u:'GB',   s:9.3, max:128,  cat:'ram'},
+  RAM_FREE_GB: {l:'RAM Free',           u:'GB',   s:6.7, max:128,  cat:'ram'},
+  RAM_TOTAL:   {l:'RAM Total',          u:'GB',   s:16,  max:null, cat:'ram'},
   // Storage
-  DISK_USAGE:  {l:'Disk Usage',      u:'%',    s:62,  max:100,  cat:'storage'},
-  DISK_USED:   {l:'Disk Used',       u:'GB',   s:310, max:2000, cat:'storage'},
-  DISK_FREE:   {l:'Disk Free',       u:'GB',   s:190, max:2000, cat:'storage'},
-  DISK_TEMP:   {l:'Disk Temp',       u:'\u00B0C',s:38,max:80,   cat:'storage'},
-  DISK_READ:   {l:'Disk Read',       u:'MB/s', s:120, max:7000, cat:'storage'},
-  DISK_WRITE:  {l:'Disk Write',      u:'MB/s', s:80,  max:7000, cat:'storage'},
-  // Fans & Board
-  MB_TEMP:     {l:'Motherboard',     u:'\u00B0C',s:35,max:80,   cat:'fans'},
-  CHASSIS_FAN1:{l:'Chassis Fan 1',   u:'RPM',  s:850, max:2000, cat:'fans'},
-  CHASSIS_FAN2:{l:'Chassis Fan 2',   u:'RPM',  s:1150,max:2000, cat:'fans'},
-  CHASSIS_FAN3:{l:'Chassis Fan 3',   u:'RPM',  s:900, max:2000, cat:'fans'},
+  DISK_USAGE:  {l:'Disk Usage',         u:'%',    s:62,  max:100,  cat:'storage'},
+  DISK_USED:   {l:'Disk Used',          u:'GB',   s:310, max:2000, cat:'storage'},
+  DISK_FREE:   {l:'Disk Free',          u:'GB',   s:190, max:2000, cat:'storage'},
+  DISK_TEMP:   {l:'Disk Temp',          u:'\u00B0C',s:38,max:80,   cat:'storage'},
+  DISK_READ:   {l:'Disk Read',          u:'MB/s', s:120, max:7000, cat:'storage'},
+  DISK_WRITE:  {l:'Disk Write',         u:'MB/s', s:80,  max:7000, cat:'storage'},
+  // Motherboard
+  MB_TEMP:     {l:'Motherboard Temp',   u:'\u00B0C',s:35,max:80,   cat:'motherboard'},
+  CHASSIS_FAN1:{l:'Chassis Fan 1',      u:'RPM',  s:850, max:2000, cat:'motherboard'},
+  CHASSIS_FAN2:{l:'Chassis Fan 2',      u:'RPM',  s:1150,max:2000, cat:'motherboard'},
+  CHASSIS_FAN3:{l:'Chassis Fan 3',      u:'RPM',  s:900, max:2000, cat:'motherboard'},
   // Network
-  NET_DOWN:    {l:'Download Speed',  u:'MB/s', s:45,  max:null, cat:'network'},
-  NET_UP:      {l:'Upload Speed',    u:'MB/s', s:12,  max:null, cat:'network'},
-  NET_PING:    {l:'Ping',            u:'ms',   s:8,   max:null, cat:'network'},
-  FRAMERATE:   {l:'Framerate (PresentMon — unreliable w/o Pro)', u:'FPS', s:120, max:null, cat:'network'},
-  RTSS_FPS:    {l:'Framerate (RTSS — requires RivaTuner Statistics Server)', u:'FPS', s:120, max:null, cat:'network'},
+  NET_DOWN:    {l:'Download Speed',     u:'MB/s', s:45,  max:null, cat:'network'},
+  NET_UP:      {l:'Upload Speed',       u:'MB/s', s:12,  max:null, cat:'network'},
+  NET_PING:    {l:'Ping',               u:'ms',   s:8,   max:null, cat:'network'},
+  // Framerate — opt-in only (require separate software)
+  RTSS_FPS:    {l:'Framerate — Live (RTSS)',     u:'FPS',  s:120, max:null, cat:'framerate'},
+  RTSS_FPS_MIN:{l:'Framerate Min — Session (RTSS)',u:'FPS', s:95,  max:null, cat:'framerate'},
+  RTSS_FPS_MAX:{l:'Framerate Max — Session (RTSS)',u:'FPS', s:144, max:null, cat:'framerate'},
+  RTSS_FPS_AVG:{l:'Framerate Avg — Session (RTSS)',u:'FPS', s:118, max:null, cat:'framerate'},
+  FRAMERATE:   {l:'Framerate (PresentMon — unreliable w/o Pro)', u:'FPS', s:120, max:null, cat:'framerate'},
   // System
-  BATTERY:     {l:'Battery',         u:'%',    s:85,  max:100,  cat:'system'},
+  BATTERY:     {l:'Battery',            u:'%',    s:85,  max:100,  cat:'system'},
 };
 
 // Default visible sensor keys in palette
+// These show up in the left panel immediately, without using + Sensors.
+// Kept deliberately minimal — only sensors virtually every desktop system has.
 let visibleSensors=new Set([
   // Time
   'CLOCK','CLOCKSEC','DATE','WEEKDAY',
@@ -280,12 +285,12 @@ let visibleSensors=new Set([
   'DISK_READ','DISK_WRITE',
   // Network
   'NET_DOWN','NET_UP',
-  // Fans & MOBO
+  // Motherboard
   'MB_TEMP','CHASSIS_FAN1','CHASSIS_FAN2','CHASSIS_FAN3',
-  // Note: FRAMERATE (PresentMon) is intentionally NOT in the default list.
-  // HWiNFO's PresentMon-based framerate tracking unreliably picks the wrong
-  // application without an HWiNFO Pro license to exclude background apps.
-  // Available via the full ＋ Sensors picker if you still want to try it.
+  // Framerate: live rolling average via RTSS (requires separate RTSS install).
+  // Session-based min/max/avg variants are opt-in via + Sensors.
+  // FRAMERATE (PresentMon) is also opt-in — unreliable without HWiNFO Pro.
+  'RTSS_FPS',
 ]);
 
 // Sensors that show ALL element variants (text+bar+ring+graph+preset)
@@ -343,17 +348,18 @@ const isTimeEl=el=>TIME_KEYS.has(el.type)||TIME_KEYS.has(el.sensorKey);
 
 // ── PALETTE ───────────────────────────────────────────────────────────────────
 const CATS=[
-  {id:'time',   label:'⏱ Time & Date'},
-  {id:'cpu',    label:'🖥 CPU'},
-  {id:'gpu',    label:'🎮 GPU'},
-  {id:'fans',   label:'🌡 Fans & MOBO'},
-  {id:'ram',    label:'🧠 RAM'},
-  {id:'storage',label:'💾 Storage'},
-  {id:'network',label:'🌐 Network'},
-  {id:'system', label:'⚙ System'},
-  {id:'_static',label:'✏ Static / Decorative'},
+  {id:'time',        label:'⏱ Time & Date'},
+  {id:'cpu',         label:'🖥 CPU'},
+  {id:'gpu',         label:'🎮 GPU'},
+  {id:'ram',         label:'🧠 RAM'},
+  {id:'storage',     label:'💾 Storage'},
+  {id:'motherboard', label:'🔌 Motherboard'},
+  {id:'network',     label:'🌐 Network'},
+  {id:'framerate',   label:'🎯 Framerate'},
+  {id:'system',      label:'⚙ System'},
+  {id:'_static',     label:'✏ Static / Decorative'},
 ];
-const DEFAULT_OPEN_CATS=new Set(['time','cpu','gpu','fans','ram','storage','network','system','_static']);
+const DEFAULT_OPEN_CATS=new Set(['time','cpu','gpu','ram','storage','motherboard','network','framerate','_static']);
 
 function buildPalette(){
   const el=$('elist');el.innerHTML='';
@@ -388,7 +394,7 @@ function buildPalette(){
           items.appendChild(makeEi('linegraph',key,'',s.l+' Graph','→ graph','ic-l',cat.id));
         // Preset only for sensors with a max value
         if(s.max!==null||typeof s.s==='number')
-          items.appendChild(makeEi('preset',key,s.u,s.l+' Preset','label+value+bar','ic-p',cat.id));
+          items.appendChild(makeEi('preset',key,s.u,s.l+' Label','→ label','ic-p',cat.id));
       }
     }
 
@@ -439,8 +445,12 @@ function openSensorPicker(){
   const cats=Object.entries(SEN).reduce((acc,[k,v])=>{
     if(!acc[v.cat])acc[v.cat]=[];acc[v.cat].push(k);return acc;
   },{});
-  const catLabel={'time':'Time & Date','cpu':'CPU','gpu':'GPU','ram':'RAM',
-    'storage':'Storage','fans':'Fans & MOBO','network':'Network','system':'System'};
+  const catLabel={
+    'time':'⏱ Time & Date','cpu':'🖥 CPU','gpu':'🎮 GPU','ram':'🧠 RAM',
+    'storage':'💾 Storage','motherboard':'🔌 Motherboard','network':'🌐 Network',
+    'framerate':'🎯 Framerate','system':'⚙ System','devicenames':'🖥 Device Names',
+    'fans':'🌡 Fans & MOBO', // legacy fallback for older imported sensor files
+  };
   let html='';
   for(const[cat,keys]of Object.entries(cats)){
     html+=`<div class="sen-cat-title">${catLabel[cat]||cat}</div>`;
@@ -534,17 +544,13 @@ function add(type,key,unit,x,y,isPreset){
   x=x??Math.round(CW*0.1);y=y??Math.round(CH*0.1);
 
   if(isPreset){
+    // Preset = a static label showing the sensor name, ready to place and style.
+    // Original intent was a quick way to drop a clean label, not a full compound element.
     const lbl={id:genId(),type:'static',sensorKey:'',x,y,z:nextZ(),visible:true,
-      customText:(s.l||key).toUpperCase()+':',w:200,h:28,fontSize:18,fontFamily:'Consolas',
+      customText:(s.l||key),w:200,h:28,fontSize:18,fontFamily:'Consolas',
       color:'#888899ff',bold:false,align:'left',unit:'',manualSize:false};
-    const val={id:genId(),type:'text',sensorKey:key,unit:s.u||'',x,y:y+30,z:nextZ(),visible:true,
-      w:200,h:46,fontSize:36,fontFamily:'Consolas',color:'#ffffffff',bold:true,
-      align:'left',prefix:'',manualSize:false};
-    const bar={id:genId(),type:'bar',sensorKey:key,x,y:y+80,z:nextZ(),visible:true,
-      w:200,h:10,fillColor:'#00b4ffff',bgColor:'#1a1a2299',borderColor:'#00000000',
-      borderThickness:0,cornerRadius:3,maxValue:s.max||100,manualSize:true};
-    [lbl,val,bar].forEach(e=>{elems.push(e);renderEl(e);});
-    refreshLayers();sel(val.id);updStatus();return;
+    elems.push(lbl);renderEl(lbl);
+    refreshLayers();sel(lbl.id);updStatus();return;
   }
 
   const id=genId();const z=nextZ();
@@ -1341,32 +1347,91 @@ function getDefaultMax(s){
   return null;
 }
 function getCat(type){
-  const m={Temperature:'fans',Fan:'fans',Usage:'cpu',Voltage:'system',Current:'system',Power:'system'};
+  const m={
+    Temperature:'motherboard', // default; specific sensors get mapped better via stdNames
+    Fan:'motherboard',
+    Usage:'cpu',
+    Voltage:'system',
+    Current:'system',
+    Power:'system',
+    Clock:'cpu',
+  };
   return m[type]||'system';
 }
 
 function applySensorData(data, filename){
   if(!data.sensors||!Array.isArray(data.sensors)) throw new Error('Invalid sensor file');
   discoveredSensors=data.sensors;
+
+  // Build a lookup from sensor_index -> device name for enriching discovered sensors
+  const deviceNameMap={};
+  if(data.device_names&&Array.isArray(data.device_names)){
+    for(const d of data.device_names){
+      deviceNameMap[d.index]=d.name;
+    }
+    // Add device names as static-label entries in a dedicated 'devicenames' category
+    // so users can drop them onto the canvas as identifying labels
+    for(const d of data.device_names){
+      const key=`DEVICE_${d.index}`;
+      if(!SEN[key]){
+        SEN[key]={l:d.name,u:'',s:d.name,max:null,cat:'devicenames'};
+      }
+    }
+    // Ensure the devicenames category exists in CATS (add dynamically if not already there)
+    if(data.device_names.length>0&&!CATS.find(c=>c.id==='devicenames')){
+      // Insert before _static
+      const staticIdx=CATS.findIndex(c=>c.id==='_static');
+      CATS.splice(staticIdx,0,{id:'devicenames',label:'🖥 Device Names'});
+    }
+  }
+
   for(const s of discoveredSensors){
     const key=`CUSTOM_${s.index}`;
     if(!SEN[key]){
-      SEN[key]={l:s.name,u:s.unit||'',s:s.sample||0,
-        max:getDefaultMax(s),cat:getCat(s.type)};
+      // Assign more specific category based on device group context
+      let cat=getCat(s.type);
+      const devName=(deviceNameMap[s.sensor_index]||'').toLowerCase();
+      if(devName.includes('cpu')||devName.includes('ryzen')||devName.includes('core')||devName.includes('intel'))
+        cat='cpu';
+      else if(devName.includes('gpu')||devName.includes('geforce')||devName.includes('radeon')||devName.includes('rtx')||devName.includes('rx '))
+        cat='gpu';
+      else if(devName.includes('motherboard')||devName.includes('nuvoton')||devName.includes('ite ')||devName.includes('b550')||devName.includes('b650')||devName.includes('x570')||devName.includes('z790'))
+        cat='motherboard';
+      else if(devName.includes('drive')||devName.includes('ssd')||devName.includes('nvme')||devName.includes('wd ')||devName.includes('samsung'))
+        cat='storage';
+      else if(devName.includes('network')||devName.includes('ethernet')||devName.includes('wifi'))
+        cat='network';
+
+      SEN[key]={l:s.name,u:s.unit||'',s:s.sample||0,max:getDefaultMax(s),cat};
       sensorMap[key]=s.index;
-      // Only auto-add to palette if it matches a standard key name
-      // Users can add others via the ＋ Sensors picker
-      const stdNames={
-        'Total CPU Usage':'CPU_USAGE','CPU (Tctl/Tdie)':'CPU_TEMP',
-        'GPU Core Load':'GPU_USAGE','GPU Temperature':'GPU_TEMP',
-        'Physical Memory Load':'RAM_USAGE','Motherboard':'MB_TEMP',
-        'Framerate Displayed (avg)':'FRAMERATE',
-      };
-      if(Object.keys(stdNames).includes(s.name)){
-        visibleSensors.add(key);
-      }
     }
   }
+
+  // Auto-map discovered sensor names to standard keys where possible.
+  // These update the sensorMap so the standard keys (CPU_USAGE, GPU_TEMP etc.)
+  // point to the correct HWiNFO index for THIS system.
+  // NOTE: 'CPU (tctl/Tdie)' and 'GPU Core Load' are intentionally excluded —
+  // tctl/Tdie is a duplicate of CPU_TEMP from the same device, and GPU Core Load
+  // is duplicated by GPU_USAGE already in the default palette.
+  const stdNames={
+    'Total CPU Usage':          'CPU_USAGE',
+    'CPU (Tctl/Tdie)':          'CPU_TEMP',   // maps to CPU_TEMP index but NOT added to palette
+    'GPU Temperature':          'GPU_TEMP',
+    'GPU Temperature (HOTSPOT)':null,          // skip
+    'Physical Memory Load':     'RAM_USAGE',
+    'Motherboard':              'MB_TEMP',
+    'Framerate Displayed (avg)':'FRAMERATE',
+  };
+  const AUTO_ADD_TO_PALETTE=new Set(['CPU_USAGE','GPU_TEMP','RAM_USAGE','MB_TEMP']);
+  for(const s of discoveredSensors){
+    const stdKey=stdNames[s.name];
+    if(stdKey&&SEN[stdKey]){
+      sensorMap[stdKey]=s.index;
+      if(AUTO_ADD_TO_PALETTE.has(stdKey))
+        visibleSensors.add(stdKey);
+    }
+  }
+
   buildPalette();
   toast(`✅ ${discoveredSensors.length} sensors available — use ＋ Sensors to add to palette`+(filename?' ('+filename+')':''));
 }

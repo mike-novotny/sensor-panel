@@ -230,6 +230,9 @@ def read_sharedmem(sensor_map):
 
 def discover_sensors():
     """Scan all HWiNFO shared memory entries and save to ds916sensors.json.
+    Also reads the sensor group (device name) section so device names like
+    'AMD Ryzen 5 5600X' and 'ASRock B550M Steel Legend' are available in
+    the theme builder's + Sensors picker as static label elements.
     Called automatically on startup and available from tray menu."""
     if not _shm_handle:
         print('Cannot discover sensors — shared memory not available')
@@ -242,28 +245,49 @@ def discover_sensors():
         TYPE_NAMES = {0:'Other',1:'Temperature',2:'Voltage',3:'Fan',
                       4:'Current',5:'Power',6:'Clock',7:'Usage',8:'Other'}
 
+        # Header layout (_HWiNFO_SENSORS_SHARED_MEM2):
+        # dwSignature(4) dwVersion(4) dwRevision(4) poll_time(8=long) = 20 bytes
+        # dwOffsetOfSensorSection(4)@0x14, dwSizeOfSensorElement(4)@0x18, dwNumSensorElements(4)@0x1C
+        # dwOffsetOfReadingSection(4)@0x20, dwSizeOfReadingElement(4)@0x24, dwNumReadingElements(4)@0x28
+        hdr = ctypes.string_at(ptr, 48)
+        off_s = struct.unpack_from('<I', hdr, 0x14)[0]  # sensor (device group) section
+        sz_s  = struct.unpack_from('<I', hdr, 0x18)[0]
+        n_s   = struct.unpack_from('<I', hdr, 0x1C)[0]
+
+        # Read device group names from the sensor section
+        # _HWiNFO_SENSORS_SENSOR_ELEMENT: dwSensorID(4) dwSensorInst(4) szSensorNameOrig(128) szSensorNameUser(128)
+        device_names = []
+        for i in range(n_s):
+            entry = ctypes.string_at(ptr + off_s + i * sz_s, min(sz_s, 264))
+            name = entry[8:8+128].rstrip(b'\x00').decode('ascii','replace').strip()
+            if name:
+                device_names.append({'index': i, 'name': name})
+
+        # dwSensorIndex linking each reading to its device group is at offset 0x04
         sensors = []
         for i in range(n_e):
             entry = ctypes.string_at(ptr + off_e + i * sz_e, sz_e)
-            stype     = struct.unpack_from('<I', entry, 0x00)[0]
-            name_orig = entry[0x0C:0x0C+128].rstrip(b'\x00').decode('ascii','replace').strip()
-            unit      = entry[0x10C:0x10C+16].rstrip(b'\x00').decode('ascii','replace').strip()
-            val       = struct.unpack_from('<d', entry, 0x11C)[0]
+            stype        = struct.unpack_from('<I', entry, 0x00)[0]
+            sensor_idx   = struct.unpack_from('<I', entry, 0x04)[0]
+            name_orig    = entry[0x0C:0x0C+128].rstrip(b'\x00').decode('ascii','replace').strip()
+            unit         = entry[0x10C:0x10C+16].rstrip(b'\x00').decode('ascii','replace').strip()
+            val          = struct.unpack_from('<d', entry, 0x11C)[0]
             if not name_orig: continue
             sensors.append({
-                'index':  i,
-                'type':   TYPE_NAMES.get(stype, 'Other'),
-                'name':   name_orig,
-                'unit':   unit,
-                'sample': round(val, 3),
+                'index':        i,
+                'sensor_index': sensor_idx,
+                'type':         TYPE_NAMES.get(stype, 'Other'),
+                'name':         name_orig,
+                'unit':         unit,
+                'sample':       round(val, 3),
             })
 
-        out = {'generated': str(datetime.now()), 'sensors': sensors}
+        out = {'generated': str(datetime.now()), 'device_names': device_names, 'sensors': sensors}
         sensors_path = os.path.join(CONFIG_DIR, 'ds916sensors.json')
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(sensors_path, 'w', encoding='utf-8') as f:
             json.dump(out, f, indent=2)
-        print(f'Sensor discovery: {len(sensors)} sensors saved to {sensors_path}')
+        print(f'Sensor discovery: {len(sensors)} sensors, {len(device_names)} device groups saved to {sensors_path}')
         return sensors_path
     except Exception as e:
         print(f'Sensor discovery error: {e}')
@@ -294,10 +318,10 @@ def read_sensors():
         try_open_sharedmem()
     d = read_sharedmem(sm) if _shm_handle is not None else {}
 
-    # RTSS is optional and independent of HWiNFO — merge in FPS if available
-    rtss_val = read_rtss_framerate()
-    if rtss_val is not None:
-        d['RTSS_FPS'] = rtss_val
+    # RTSS is optional and independent of HWiNFO — merge in FPS values if available
+    rtss_vals = read_rtss_framerate()
+    if rtss_vals is not None:
+        d.update(rtss_vals)
 
     return d
 
@@ -539,6 +563,7 @@ def read_rtss_framerate():
         best_pid = None
         best_time1 = -1
         best_fps = None
+        best_entry_ptr = None
 
         for i in range(256):
             entry_ptr = ptr + app_arr_offset + i*app_entry_size
@@ -570,7 +595,7 @@ def read_rtss_framerate():
 
             if target_name:
                 if name.lower() == target_name:
-                    return round(fps, 1)
+                    return _build_rtss_result(entry_ptr, app_entry_size, fps, ctypes)
                 continue
 
             # Auto mode: pick whichever app most recently rendered a frame
@@ -578,14 +603,37 @@ def read_rtss_framerate():
                 best_time1 = time1
                 best_pid = pid
                 best_fps = fps
+                best_entry_ptr = entry_ptr
 
         if target_name:
             return None  # configured process not currently found/running
-        return round(best_fps, 1) if best_fps is not None else None
+        if best_fps is None:
+            return None
+        return _build_rtss_result(best_entry_ptr, app_entry_size, best_fps, ctypes)
 
     except Exception as e:
         print('RTSS read error: %r' % (e,), flush=True)
         return None
+
+def _build_rtss_result(entry_ptr, app_entry_size, fps, ctypes):
+    """Build the RTSS sensor dict from an app entry pointer.
+    Returns dict with RTSS_FPS, RTSS_FPS_MIN, RTSS_FPS_MAX, RTSS_FPS_AVG."""
+    result = {'RTSS_FPS': round(fps, 1)}
+    try:
+        # dwStatFramerateMin @304, dwStatFramerateAvg @308, dwStatFramerateMax @312
+        # These are session-based averages but still useful for display when available.
+        # They reset with each benchmark session but give min/max context when non-zero.
+        if app_entry_size >= 316:
+            fmin = struct.unpack('<I', ctypes.string_at(entry_ptr + 304, 4))[0]
+            favg = struct.unpack('<I', ctypes.string_at(entry_ptr + 308, 4))[0]
+            fmax = struct.unpack('<I', ctypes.string_at(entry_ptr + 312, 4))[0]
+            # Only expose these if they have plausible non-zero values
+            if fmin > 0: result['RTSS_FPS_MIN'] = float(fmin)
+            if favg > 0: result['RTSS_FPS_AVG'] = float(favg)
+            if fmax > 0: result['RTSS_FPS_MAX'] = float(fmax)
+    except Exception:
+        pass
+    return result
 
 # ── Font loader ───────────────────────────────────────────────────────────────
 _font_cache = {}
@@ -1525,28 +1573,6 @@ def open_settings():
     ttk.Button(proc_row, text='↻ Refresh List', command=refresh_rtss_apps).pack(side='left', padx=(6,0))
     refresh_rtss_apps()
 
-    # ── Tab 3: Sensor Map ─────────────────────────────────────────────────────
-    t2 = ttk.Frame(nb); nb.add(t2, text='  Sensor Map  ')
-    ttk.Label(t2, text='Map each sensor key to its HWiNFO64 registry index (ValueRawN).\nLeave blank if not available.',
-              font=('Segoe UI', 9), foreground='#888').pack(anchor='w', padx=10, pady=(8,4))
-
-    frame2 = ttk.Frame(t2); frame2.pack(fill='both', expand=True, padx=10, pady=4)
-    sm = cfg['sensor_map']
-    SENSOR_LABELS = {
-        'CPU_USAGE':'CPU Usage %', 'CPU_TEMP':'CPU Temp °C', 'MB_TEMP':'Motherboard Temp',
-        'CPU_FAN':'CPU Fan RPM', 'CHASSIS_FAN1':'Chassis Fan 1', 'CHASSIS_FAN2':'Chassis Fan 2',
-        'GPU_TEMP':'GPU Temp °C', 'GPU_FAN1':'GPU Fan 1', 'GPU_FAN2':'GPU Fan 2',
-        'GPU_USAGE':'GPU Usage %', 'RAM_USAGE':'RAM Usage %', 'RAM_USED_GB':'RAM Used GB',
-        'NET_DOWN':'Net Download', 'NET_UP':'Net Upload'
-    }
-    sm_vars = {}
-    for row, (key, lname) in enumerate(SENSOR_LABELS.items()):
-        ttk.Label(frame2, text=lname, width=20).grid(row=row, column=0, sticky='w', pady=2)
-        ttk.Label(frame2, text=key, width=16, foreground='#555').grid(row=row, column=1, sticky='w', pady=2)
-        v = tk.StringVar(value='' if sm.get(key) is None else str(sm[key]))
-        ttk.Entry(frame2, textvariable=v, width=8).grid(row=row, column=2, padx=6, pady=2)
-        sm_vars[key] = v
-
     # ── Save / Cancel ─────────────────────────────────────────────────────────
     def save_settings():
         cfg['com_port']      = com_var.get()
@@ -1554,9 +1580,6 @@ def open_settings():
         cfg['theme_path']    = theme_var.get()
         cfg['autostart']     = auto_var.get()
         cfg['rtss_process']  = proc_var.get().strip() if rtss_mode_var.get()=='manual' else ''
-        for key, v in sm_vars.items():
-            s = v.get().strip()
-            cfg['sensor_map'][key] = None if s == '' else int(s)
         save_cfg(cfg)
         set_autostart(cfg['autostart'])
         if cfg['theme_path'] and cfg['theme_path'] != _current_theme_path:

@@ -286,10 +286,6 @@ Configures the optional RivaTuner Statistics Server framerate source (see [Frame
 - **Auto-detect active 3D app** (default) — automatically uses whichever hooked game most recently rendered a frame
 - **Pin a specific process** — choose an exact process from a live dropdown (populated via **↻ Refresh List**) instead of relying on auto-detection, useful if you regularly run multiple games/3D apps at once
 
-### Sensor Map Tab
-
-Maps sensor keys (`CPU_USAGE`, `GPU_TEMP`, etc.) to their HWiNFO shared memory index. Populated automatically by sensor discovery — you should rarely need to edit this manually.
-
 ---
 
 ## Theme Builder
@@ -405,25 +401,32 @@ This file contains every sensor HWiNFO64 exposes, including hardware-specific se
 
 **Re-run discovery** at any time via tray icon → **🔍 Discover Sensors** — for example after adding new hardware or updating HWiNFO64.
 
-> Sensor indices vary between systems and HWiNFO versions. The tray app matches sensors by name (`"Total CPU Usage"`, `"CPU (Tctl/Tdie)"`, `"Framerate Displayed (avg)"` etc.) rather than by index, so mappings stay correct even if the order changes.
+> Sensor indices vary between systems and HWiNFO versions. The tray app matches sensors by name (`"Total CPU Usage"`, `"GPU Temperature"`, `"Physical Memory Load"` etc.) rather than by index, so mappings stay correct even if the order changes.
 
 ### Framerate Sensors
 
-There are two ways to get FPS data, with very different reliability:
+There are two sources for FPS data, with very different reliability:
 
-**`FRAMERATE` (via HWiNFO/PresentMon)** — HWiNFO64 can expose framerate via its PresentMon integration (sources like `Framerate Displayed (avg)`). In practice this is **unreliable without an HWiNFO Pro license** — the free version doesn't let you exclude background applications from PresentMon tracking, so it frequently reports the framerate of the wrong window instead of your game. For this reason `FRAMERATE` is **not included in the default sensor palette**, though it's still available via the **＋ Sensors** picker.
+**`RTSS_FPS` — "Framerate — Live (RTSS)"** is the recommended sensor. It uses RivaTuner Statistics Server, which hooks directly into the game's DirectX/OpenGL/Vulkan present calls via a continuously-updating ring buffer. The framerate is reliably attributed to the specific game process, with no background-app confusion. This sensor is **included in the default palette** and requires no configuration beyond having RTSS installed and running.
 
-**`RTSS_FPS` (via RivaTuner Statistics Server)** — a much more reliable alternative, since RTSS hooks directly into the game's DirectX/OpenGL/Vulkan present calls rather than relying on system-wide PresentMon sampling. This means the framerate is correctly attributed to the actual game process, with no background-app confusion and no Pro license needed.
+Three additional RTSS sensors are available via the **＋ Sensors** picker but **not in the default palette**:
+- `RTSS_FPS_MIN` — lowest framerate recorded during the current RTSS benchmark session
+- `RTSS_FPS_MAX` — highest framerate recorded during the current RTSS benchmark session
+- `RTSS_FPS_AVG` — average framerate across the current RTSS benchmark session
 
-To use it:
+These three are **session-based** — they only populate while an RTSS benchmark/recording session is actively running. They will show 0 at all other times. Start a session in RTSS via its OSD benchmark controls if you want these values.
+
+**`FRAMERATE` (via HWiNFO/PresentMon)** is **unreliable without an HWiNFO Pro license** — the free version can't exclude background applications from PresentMon tracking. Available via ＋ Sensors but not in the default palette.
+
+To set up RTSS:
 1. Install [RivaTuner Statistics Server](https://www.guru3d.com/download/rtss-rivatuner-statistics-server-download/) (also bundled with MSI Afterburner) and make sure it's running
 2. Launch your game — RTSS will automatically hook into it
-3. Add the **`RTSS_FPS`** sensor via the **＋ Sensors** picker in the theme builder
-4. In the tray app, go to **Settings → RTSS (FPS)** to confirm the connection status, and optionally pin a specific process by name instead of relying on auto-detection (which picks whichever hooked game most recently rendered a frame)
+3. `RTSS_FPS` will now update in the default palette automatically — no additional configuration needed
+4. Optionally, go to **Settings → RTSS (FPS)** to pin a specific process instead of relying on auto-detection
 
-RTSS support is fully optional — if RTSS isn't installed or running, the `RTSS_FPS` sensor simply stays unavailable and everything else continues working normally. No administrator/elevated privileges are required.
+RTSS is fully optional — if it isn't installed or running, the framerate sensors simply stay unavailable and everything else continues working normally. No administrator privileges are required.
 
-**If `RTSS_FPS` shows 0 or no data for a specific game**, the most likely cause isn't a connection problem — it's that RTSS hasn't actually hooked that game yet. Check RTSS's own **Application Detection Level** setting (Options → General): if it's set to **Low**, try **Medium** or **High** instead, since some games need more aggressive hook injection to be detected. RTSS's on-screen display can be left **off** and **Stealth Mode** can be left **on** — neither affects whether shared memory data is available to this tray app.
+**If `RTSS_FPS` shows 0 or no data for a specific game**, RTSS likely hasn't hooked that game yet. Try raising RTSS's **Application Detection Level** (Options → General) from Low to Medium or High. RTSS's on-screen display can be left **off** and **Stealth Mode** can be left **on** — neither affects shared memory availability.
 
 ---
 
@@ -524,7 +527,10 @@ Themes are saved as a single **`.ds916theme`** file — a JSON document with all
 | `DISK_READ` / `DISK_WRITE` | Read Rate / Write Rate |
 | `NET_DOWN` / `NET_UP` | Current DL rate / Current UP rate |
 | `FRAMERATE` | Framerate Displayed (avg) — via HWiNFO/PresentMon, unreliable w/o Pro |
-| `RTSS_FPS` | Live FPS — via RivaTuner Statistics Server (optional, see above) |
+| `RTSS_FPS` | **Framerate — Live (RTSS)** — recommended, continuously-updating ring buffer (default palette) |
+| `RTSS_FPS_MIN` | Framerate Min — Session (RTSS) — opt-in, only populated during active benchmark session |
+| `RTSS_FPS_MAX` | Framerate Max — Session (RTSS) — opt-in, only populated during active benchmark session |
+| `RTSS_FPS_AVG` | Framerate Avg — Session (RTSS) — opt-in, only populated during active benchmark session |
 | `CUSTOM_N` | Any sensor at shared memory index N |
 
 ---
