@@ -419,7 +419,7 @@ function makeEi(type,key,unit,label,sub,iconCls,cat){
   const div=document.createElement('div');
   div.className='ei';div.draggable=true;
   div.dataset.cat=cat;div.dataset.label=(label+' '+(sub||'')).toLowerCase();
-  const ico=iconCls==='ic-b'?'▬':iconCls==='ic-r'?'○':iconCls==='ic-l'?'〜':iconCls==='ic-p'?'⊞':'T';
+  const ico=iconCls==='ic-b'?'▬':iconCls==='ic-r'?'○':iconCls==='ic-l'?'〜':iconCls==='ic-t'?'V':iconCls==='ic-s'||iconCls==='ic-p'?'T':'·';
   div.innerHTML=`<div class="eico ${iconCls}">${ico}</div><div><div class="elabel">${label}</div>${sub?`<div class="esub">${sub}</div>`:''}</div>`;
   div.addEventListener('dragstart',e=>{palDrag={type,key,unit,isPreset:type==='preset'};e.dataTransfer.effectAllowed='copy';e.dataTransfer.setData('text/plain','pal');});
   div.addEventListener('click',()=>add(type,key,unit,null,null,type==='preset'));
