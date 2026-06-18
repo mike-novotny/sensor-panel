@@ -30,6 +30,7 @@ DEFAULT_CFG = {
     'autostart':  True,
     'hwinfo_path': '',
     'hwinfo_source': 'sharedmem',   # sharedmem (richer) with registry fallback
+    'rtss_process': '',              # empty = auto-detect active 3D app; or an exact exe name (e.g. "game.exe") to pin a specific process
     'sensor_map': {
         'CPU_USAGE':   46,
         'CPU_TEMP':    94,
@@ -270,8 +271,303 @@ def read_sensors():
             try_open_sharedmem()
         if _shm_handle is not None:
             d = read_sharedmem(sm)
-            if d: return d
-    return read_registry(sm)
+        else:
+            d = read_registry(sm)
+    else:
+        d = read_registry(sm)
+
+    # RTSS is optional and independent of HWiNFO — merge in FPS if available
+    rtss_val = read_rtss_framerate()
+    if rtss_val is not None:
+        d['RTSS_FPS'] = rtss_val
+
+    return d
+
+# ── RTSS Reader (optional — FPS via RivaTuner Statistics Server) ──────────────
+# Independent of HWiNFO. RTSS hooks directly into the game's D3D/OpenGL/Vulkan
+# present calls, so its per-process framerate is attributed correctly without
+# needing HWiNFO Pro to exclude background applications.
+_rtss_handle = None       # (kernel32, win_handle, ptr, size) once mapped
+_rtss_unavailable_logged = False
+_rtss_last_attempt = 0     # time.time() of the last connection attempt
+_rtss_retry_interval = 10  # seconds between reconnect attempts while unavailable
+
+def try_open_rtss():
+    """Try to open RTSS shared memory using the same pure-ctypes approach
+    that works for HWiNFO. Safe to call repeatedly — RTSS may not be
+    running, may be started later, or may be closed; we just keep retrying
+    on each read rather than treating one failure as permanent."""
+    global _rtss_handle, _rtss_unavailable_logged
+    try:
+        import ctypes
+        kernel32      = ctypes.windll.kernel32
+        FILE_MAP_READ       = 0x0004
+        FILE_MAP_ALL_ACCESS  = 0x000F001F
+
+        kernel32.OpenFileMappingW.restype = ctypes.c_void_p
+        kernel32.MapViewOfFile.restype    = ctypes.c_void_p
+        kernel32.UnmapViewOfFile.argtypes = [ctypes.c_void_p]
+        kernel32.CloseHandle.argtypes     = [ctypes.c_void_p]
+
+        # The access mask passed to OpenFileMappingW constrains what
+        # MapViewOfFile can later request against that same handle — so if
+        # MapViewOfFile fails with ERROR_ACCESS_DENIED, retrying with a
+        # different access right on the SAME handle won't help; we need a
+        # fresh OpenFileMappingW call with a different requested access
+        # right. Try every (access, name) combination as a full
+        # open+map+verify cycle, closing and moving on between attempts.
+        #
+        # IMPORTANT: request size 0 here, not a guessed fixed size. Passing
+        # a size larger than the section RTSS actually created can itself
+        # cause MapViewOfFile to fail with ERROR_ACCESS_DENIED (5) — the
+        # same symptom as a real permissions problem, but with a totally
+        # different cause. 0 means "map the whole existing section,
+        # whatever size it actually is" and is the standard safe approach
+        # when you don't control the size the mapping was created with.
+        ptr = None
+        win_handle = None
+        opened_name = None
+        opened_access = None
+        last_err = None
+
+        for access in (FILE_MAP_ALL_ACCESS, FILE_MAP_READ):
+            for name in ('RTSSSharedMemoryV2', 'Global\\RTSSSharedMemoryV2'):
+                h = kernel32.OpenFileMappingW(access, False, name)
+                if not h:
+                    continue
+                p = kernel32.MapViewOfFile(h, access, 0, 0, 0)
+                if p:
+                    ptr, win_handle, opened_name, opened_access = p, h, name, access
+                    break
+                last_err = kernel32.GetLastError()
+                try:
+                    print('  RTSS MapViewOfFile failed (error %s) on "%s" with access=0x%X - trying next combination' % (last_err, name, access), flush=True)
+                except Exception as log_err:
+                    print('  RTSS MapViewOfFile failed, and logging itself raised: %r' % (log_err,), flush=True)
+                kernel32.CloseHandle(h)
+            if ptr:
+                break
+
+        if not win_handle:
+            # RTSS not running — this is a normal, expected state since RTSS
+            # is an optional feature. Log once, not every frame.
+            if not _rtss_unavailable_logged:
+                if last_err is not None:
+                    print('RTSS shared memory could not be mapped (last error %s) - '
+                          'this is optional, FPS sensor will be unavailable. Make sure '
+                          'RTSS (RivaTuner Statistics Server) is installed and running.' % (last_err,), flush=True)
+                else:
+                    print('RTSS shared memory not found (RTSS not running - this is '
+                          'optional, FPS sensor will be unavailable)', flush=True)
+                _rtss_unavailable_logged = True
+            _rtss_handle = None
+            return False
+
+        sig_bytes = ctypes.string_at(ptr, 4)
+        sig = struct.unpack('<I', sig_bytes)[0]
+        # 'RTSS' as a little-endian DWORD per the SDK header
+        RTSS_SIG = struct.unpack('<I', b'SSTR')[0]  # confirmed via live testing: RTSS writes the signature bytes in this order in memory
+        if sig != RTSS_SIG:
+            print('  RTSS signature mismatch: got 0x%08X, expected 0x%08X (0xDEAD means RTSS is shutting down)' % (sig, RTSS_SIG), flush=True)
+            kernel32.UnmapViewOfFile(ptr)
+            kernel32.CloseHandle(win_handle)
+            _rtss_handle = None
+            return False
+
+        version = struct.unpack_from('<I', ctypes.string_at(ptr+4, 4))[0]
+        if version < 0x00020000:
+            # Older v1.x struct doesn't have per-app entries we need
+            print('  RTSS version 0x%08X is older than v2.0 - per-app data unavailable' % (version,), flush=True)
+            kernel32.UnmapViewOfFile(ptr)
+            kernel32.CloseHandle(win_handle)
+            _rtss_handle = None
+            return False
+
+        _rtss_handle = (kernel32, win_handle, ptr, None)
+        _rtss_unavailable_logged = False
+        print('RTSS shared memory connected OK (mapping="%s", version=0x%08X)' % (opened_name, version), flush=True)
+        return True
+
+    except Exception as e:
+        if not _rtss_unavailable_logged:
+            print('RTSS shared memory unavailable: %r' % (e,), flush=True)
+            _rtss_unavailable_logged = True
+        _rtss_handle = None
+        return False
+
+
+def list_rtss_apps():
+    """Return a list of (process_id, exe_name, framerate) for all active
+    3D applications currently tracked by RTSS. Used by Settings to let the
+    user pick a specific process instead of relying on auto-detection."""
+    global _rtss_handle
+    apps = []
+    if _rtss_handle is None:
+        if not try_open_rtss():
+            return apps
+    try:
+        import ctypes
+        kernel32, win_handle, ptr, size = _rtss_handle
+
+        # Re-verify signature hasn't gone stale (RTSS could have shut down
+        # since we last opened the mapping)
+        hdr = ctypes.string_at(ptr, 36)
+        sig = struct.unpack_from('<I', hdr, 0)[0]
+        RTSS_SIG = struct.unpack('<I', b'SSTR')[0]  # confirmed via live testing: RTSS writes the signature bytes in this order in memory
+        if sig != RTSS_SIG:
+            try:
+                kernel32.UnmapViewOfFile(ptr)
+                kernel32.CloseHandle(win_handle)
+            except Exception:
+                pass
+            _rtss_handle = None
+            return apps
+
+        # v2.0 header layout (RTSS_SHARED_MEMORY):
+        # dwSignature(4) dwVersion(4) dwAppEntrySize(4) dwAppArrOffset(4)
+        # dwAppArrSize(4) dwOSDEntrySize(4) dwOSDArrOffset(4) dwOSDArrSize(4)
+        # dwOSDFrame(4) = 36 bytes, then arrOSD[8], then arrApp[256]
+        app_entry_size = struct.unpack_from('<I', hdr, 8)[0]
+        app_arr_offset = struct.unpack_from('<I', hdr, 12)[0]
+
+        if app_entry_size <= 0 or app_entry_size > 100000:
+            return apps  # sanity check — malformed/unexpected layout
+
+        for i in range(256):
+            entry_ptr = ptr + app_arr_offset + i*app_entry_size
+            # dwProcessID(4) at offset 0, szName[MAX_PATH=260] at offset 4
+            pid_bytes = ctypes.string_at(entry_ptr, 4)
+            pid = struct.unpack('<I', pid_bytes)[0]
+            if pid == 0:
+                continue  # empty slot
+            name_bytes = ctypes.string_at(entry_ptr + 4, 260)
+            name = name_bytes.split(b'\x00', 1)[0].decode('utf-8', errors='replace')
+            if not name:
+                continue
+
+            # dwStatFramerateAvg (offset 308) turned out to be tied to RTSS's
+            # benchmark/stat-recording session lifecycle — it can spike
+            # absurdly high right as a session starts, then drop to 0 once
+            # that recording window ends, since it's not continuously live.
+            # dwStatFrameTimeBufFramerate (offset 5024, v2.5+) is the value
+            # backing RTSS's own ring buffer of recent frametimes — it
+            # updates continuously every frame with no recording-session
+            # concept, which is what working third-party readers like
+            # CapFrameX use. Stored in units of 0.1 FPS. Fall back to the
+            # older instantaneous dwFrameTime-based calc on RTSS versions
+            # too old to have this field at all.
+            if app_entry_size >= 5028:
+                favg_bytes = ctypes.string_at(entry_ptr + 5024, 4)
+                fps = struct.unpack('<I', favg_bytes)[0] / 10.0
+            else:
+                frametime_bytes = ctypes.string_at(entry_ptr + 280, 4)
+                frame_time_us = struct.unpack('<I', frametime_bytes)[0]
+                fps = (1000000.0 / frame_time_us) if frame_time_us > 0 else 0.0
+
+            apps.append((pid, name, round(fps, 1)))
+
+    except Exception as e:
+        print('RTSS app list error: %r' % (e,), flush=True)
+    return apps
+
+
+def read_rtss_framerate():
+    """Return the current framerate (float) from RTSS, or None if RTSS
+    isn't running / no active 3D app is detected. Optional feature —
+    callers should treat None as 'sensor unavailable', not an error.
+
+    Selection behavior:
+      - cfg['rtss_process'] set (non-empty) -> match that exe name exactly
+      - otherwise -> auto-pick the active app: the entry with the most
+        recently updated dwTime1, which corresponds to whichever hooked
+        3D application most recently rendered a frame (i.e. the one
+        currently in the foreground / actively rendering)
+    """
+    global _rtss_handle, _rtss_last_attempt
+    if _rtss_handle is None:
+        now = time.time()
+        if now - _rtss_last_attempt < _rtss_retry_interval:
+            return None  # still cooling down since the last failed attempt
+        _rtss_last_attempt = now
+        if not try_open_rtss():
+            return None
+    try:
+        import ctypes
+        kernel32, win_handle, ptr, size = _rtss_handle
+
+        hdr = ctypes.string_at(ptr, 36)
+        sig = struct.unpack_from('<I', hdr, 0)[0]
+        RTSS_SIG = struct.unpack('<I', b'SSTR')[0]  # confirmed via live testing: RTSS writes the signature bytes in this order in memory
+        if sig != RTSS_SIG:
+            # Signature flipped to 0xDEAD (or similar) — RTSS shut down while
+            # we were holding the mapping open. Drop our handle so the next
+            # call to try_open_rtss() actually attempts a fresh connection
+            # instead of silently reusing a dead one forever.
+            try:
+                kernel32.UnmapViewOfFile(ptr)
+                kernel32.CloseHandle(win_handle)
+            except Exception:
+                pass
+            _rtss_handle = None
+            return None
+
+        app_entry_size = struct.unpack_from('<I', hdr, 8)[0]
+        app_arr_offset = struct.unpack_from('<I', hdr, 12)[0]
+        if app_entry_size <= 0 or app_entry_size > 100000:
+            return None
+
+        target_name = cfg.get('rtss_process', '').strip().lower()
+
+        best_pid = None
+        best_time1 = -1
+        best_fps = None
+
+        for i in range(256):
+            entry_ptr = ptr + app_arr_offset + i*app_entry_size
+            pid_bytes = ctypes.string_at(entry_ptr, 4)
+            pid = struct.unpack('<I', pid_bytes)[0]
+            if pid == 0:
+                continue
+
+            name_bytes = ctypes.string_at(entry_ptr + 4, 260)
+            name = name_bytes.split(b'\x00', 1)[0].decode('utf-8', errors='replace')
+
+            time1_bytes = ctypes.string_at(entry_ptr + 272, 4)
+            time1 = struct.unpack('<I', time1_bytes)[0]
+
+            # dwStatFrameTimeBufFramerate (offset 5024, v2.5+): backed by
+            # RTSS's continuously-updating ring buffer of recent
+            # frametimes, with no recording-session lifecycle — unlike
+            # dwStatFramerateAvg, this won't spike then drop to zero.
+            # Stored in units of 0.1 FPS. Fall back to the older
+            # instantaneous dwFrameTime-based calc on RTSS versions too old
+            # to have this field at all.
+            if app_entry_size >= 5028:
+                favg_bytes = ctypes.string_at(entry_ptr + 5024, 4)
+                fps = struct.unpack('<I', favg_bytes)[0] / 10.0
+            else:
+                frametime_bytes = ctypes.string_at(entry_ptr + 280, 4)
+                frame_time_us = struct.unpack('<I', frametime_bytes)[0]
+                fps = (1000000.0 / frame_time_us) if frame_time_us > 0 else 0.0
+
+            if target_name:
+                if name.lower() == target_name:
+                    return round(fps, 1)
+                continue
+
+            # Auto mode: pick whichever app most recently rendered a frame
+            if time1 > best_time1:
+                best_time1 = time1
+                best_pid = pid
+                best_fps = fps
+
+        if target_name:
+            return None  # configured process not currently found/running
+        return round(best_fps, 1) if best_fps is not None else None
+
+    except Exception as e:
+        print('RTSS read error: %r' % (e,), flush=True)
+        return None
 
 # ── Font loader ───────────────────────────────────────────────────────────────
 _font_cache = {}
@@ -731,13 +1027,19 @@ def load_theme(path):
             # Background is embedded as a data URL: "data:image/png;base64,..."
             bg_data_url = theme.get('backgroundImage')
             if bg_data_url and isinstance(bg_data_url, str) and ',' in bg_data_url:
-                try:
-                    header, b64 = bg_data_url.split(',', 1)
-                    img_bytes = base64.b64decode(b64)
-                    theme['_background_image'] = PILImage.open(io.BytesIO(img_bytes)).convert('RGBA')
-                    print(f'Background image loaded from embedded data ({len(img_bytes)//1024}KB)')
-                except Exception as e:
-                    print(f'Background image decode error: {e}')
+                header, b64 = bg_data_url.split(',', 1)
+                if 'svg' in header.lower():
+                    print('Background image is SVG format, which Pillow cannot decode — '
+                          'this theme was likely generated by an older version of the AI '
+                          'Theme Generator. Re-generate and re-save the theme in the theme '
+                          'builder to fix (newer versions export a PNG background instead).')
+                else:
+                    try:
+                        img_bytes = base64.b64decode(b64)
+                        theme['_background_image'] = PILImage.open(io.BytesIO(img_bytes)).convert('RGBA')
+                        print(f'Background image loaded from embedded data ({len(img_bytes)//1024}KB)')
+                    except Exception as e:
+                        print(f'Background image decode error: {e}')
             # Image layers are also embedded as data URLs
             for el in theme.get('elements', []):
                 if el.get('type') == 'image' and el.get('data'):
@@ -1117,6 +1419,54 @@ def open_settings():
     status_lbl.pack(anchor='w', padx=10)
     update_task_btn()
 
+    # ── Tab: RTSS (optional FPS source) ──────────────────────────────────────
+    t4 = ttk.Frame(nb); nb.add(t4, text='  RTSS (FPS)  ')
+    ttk.Label(t4, text='RivaTuner Statistics Server (RTSS) is an optional, separate source for\n'
+                        'reliable per-game FPS — independent of HWiNFO. If RTSS isn\'t installed\n'
+                        'or running, the FPS sensor simply stays unavailable; everything else\n'
+                        'keeps working normally.',
+              font=('Segoe UI', 9), foreground='#888', justify='left').pack(anchor='w', padx=10, pady=(8,8))
+
+    rtss_status_lbl = ttk.Label(t4, text='Checking...', font=('Segoe UI', 9))
+    rtss_status_lbl.pack(anchor='w', padx=10, pady=(0,8))
+
+    mode_frame = ttk.Frame(t4); mode_frame.pack(anchor='w', padx=10, pady=4, fill='x')
+    rtss_mode_var = tk.StringVar(value='auto' if not cfg.get('rtss_process','').strip() else 'manual')
+    def on_mode_change():
+        is_manual = rtss_mode_var.get()=='manual'
+        proc_cb.config(state='readonly' if is_manual else 'disabled')
+    ttk.Radiobutton(mode_frame, text='Auto-detect active 3D app (recommended)', value='auto',
+                    variable=rtss_mode_var, command=on_mode_change).pack(anchor='w')
+    ttk.Radiobutton(mode_frame, text='Pin a specific process:', value='manual',
+                    variable=rtss_mode_var, command=on_mode_change).pack(anchor='w', pady=(4,0))
+
+    proc_row = ttk.Frame(t4); proc_row.pack(anchor='w', padx=28, pady=(2,8), fill='x')
+    proc_var = tk.StringVar(value=cfg.get('rtss_process',''))
+    proc_cb = ttk.Combobox(proc_row, textvariable=proc_var, width=30,
+                           state='readonly' if rtss_mode_var.get()=='manual' else 'disabled')
+    proc_cb.pack(side='left')
+
+    def refresh_rtss_apps():
+        apps = list_rtss_apps()
+        if apps:
+            names = sorted(set(name for _,name,_ in apps))
+            proc_cb.config(values=names)
+            rtss_status_lbl.config(
+                text=f'✅ RTSS connected — {len(apps)} active 3D app(s) detected',
+                foreground='#4fc87a')
+        else:
+            proc_cb.config(values=[])
+            if _rtss_handle is None:
+                rtss_status_lbl.config(
+                    text='○ RTSS not running (optional — install from guru3d.com if you want FPS)',
+                    foreground='#888')
+            else:
+                rtss_status_lbl.config(
+                    text='✅ RTSS connected — no active 3D app detected right now',
+                    foreground='#4fc87a')
+    ttk.Button(proc_row, text='↻ Refresh List', command=refresh_rtss_apps).pack(side='left', padx=(6,0))
+    refresh_rtss_apps()
+
     # ── Tab 3: Sensor Map ─────────────────────────────────────────────────────
     t2 = ttk.Frame(nb); nb.add(t2, text='  Sensor Map  ')
     ttk.Label(t2, text='Map each sensor key to its HWiNFO64 registry index (ValueRawN).\nLeave blank if not available.',
@@ -1146,6 +1496,7 @@ def open_settings():
         cfg['hwinfo_source'] = src_var.get()
         cfg['theme_path']    = theme_var.get()
         cfg['autostart']     = auto_var.get()
+        cfg['rtss_process']  = proc_var.get().strip() if rtss_mode_var.get()=='manual' else ''
         for key, v in sm_vars.items():
             s = v.get().strip()
             cfg['sensor_map'][key] = None if s == '' else int(s)

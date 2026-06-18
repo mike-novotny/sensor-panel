@@ -279,6 +279,14 @@ Configures the **11.5-hour auto-restart workaround** for HWiNFO64 free edition's
 2. Click **Install Restart Task** — creates a Windows Scheduled Task that silently restarts HWiNFO64 every 11.5 hours
 3. Status shows whether the task is currently installed
 
+### RTSS (FPS) Tab
+
+Configures the optional RivaTuner Statistics Server framerate source (see [Framerate Sensors](#framerate-sensors) above):
+
+- **Connection status** — shows whether RTSS is currently running and how many active 3D applications it's tracking
+- **Auto-detect active 3D app** (default) — automatically uses whichever hooked game most recently rendered a frame
+- **Pin a specific process** — choose an exact process from a live dropdown (populated via **↻ Refresh List**) instead of relying on auto-detection, useful if you regularly run multiple games/3D apps at once
+
 ### Sensor Map Tab
 
 Maps sensor keys (`CPU_USAGE`, `GPU_TEMP`, etc.) to their HWiNFO shared memory index. Populated automatically by sensor discovery — you should rarely need to edit this manually.
@@ -400,11 +408,23 @@ This file contains every sensor HWiNFO64 exposes, including hardware-specific se
 
 > Sensor indices vary between systems and HWiNFO versions. The tray app matches sensors by name (`"Total CPU Usage"`, `"CPU (Tctl/Tdie)"`, `"Framerate Displayed (avg)"` etc.) rather than by index, so mappings stay correct even if the order changes.
 
-### Framerate Sensor
+### Framerate Sensors
 
-HWiNFO64 can expose framerate via its PresentMon integration (`FRAMERATE` key, sources like `Framerate Displayed (avg)`). In practice this is **unreliable without an HWiNFO Pro license** — the free version doesn't let you exclude background applications from PresentMon tracking, so it frequently reports the framerate of the wrong window instead of your game.
+There are two ways to get FPS data, with very different reliability:
 
-For this reason `FRAMERATE` is **not included in the default sensor palette**. It's still available via the **＋ Sensors** picker if you want to experiment with it, and via HWiNFO Pro it becomes a reliable option.
+**`FRAMERATE` (via HWiNFO/PresentMon)** — HWiNFO64 can expose framerate via its PresentMon integration (sources like `Framerate Displayed (avg)`). In practice this is **unreliable without an HWiNFO Pro license** — the free version doesn't let you exclude background applications from PresentMon tracking, so it frequently reports the framerate of the wrong window instead of your game. For this reason `FRAMERATE` is **not included in the default sensor palette**, though it's still available via the **＋ Sensors** picker.
+
+**`RTSS_FPS` (via RivaTuner Statistics Server)** — a much more reliable alternative, since RTSS hooks directly into the game's DirectX/OpenGL/Vulkan present calls rather than relying on system-wide PresentMon sampling. This means the framerate is correctly attributed to the actual game process, with no background-app confusion and no Pro license needed.
+
+To use it:
+1. Install [RivaTuner Statistics Server](https://www.guru3d.com/download/rtss-rivatuner-statistics-server-download/) (also bundled with MSI Afterburner) and make sure it's running
+2. Launch your game — RTSS will automatically hook into it
+3. Add the **`RTSS_FPS`** sensor via the **＋ Sensors** picker in the theme builder
+4. In the tray app, go to **Settings → RTSS (FPS)** to confirm the connection status, and optionally pin a specific process by name instead of relying on auto-detection (which picks whichever hooked game most recently rendered a frame)
+
+RTSS support is fully optional — if RTSS isn't installed or running, the `RTSS_FPS` sensor simply stays unavailable and everything else continues working normally. No administrator/elevated privileges are required.
+
+**If `RTSS_FPS` shows 0 or no data for a specific game**, the most likely cause isn't a connection problem — it's that RTSS hasn't actually hooked that game yet. Check RTSS's own **Application Detection Level** setting (Options → General): if it's set to **Low**, try **Medium** or **High** instead, since some games need more aggressive hook injection to be detected. RTSS's on-screen display can be left **off** and **Stealth Mode** can be left **on** — neither affects whether shared memory data is available to this tray app.
 
 ---
 
@@ -505,7 +525,8 @@ Themes are saved as a single **`.ds916theme`** file — a JSON document with all
 | `RAM_TOTAL` | Physical Memory Total |
 | `DISK_READ` / `DISK_WRITE` | Read Rate / Write Rate |
 | `NET_DOWN` / `NET_UP` | Current DL rate / Current UP rate |
-| `FRAMERATE` | Framerate Displayed (avg) |
+| `FRAMERATE` | Framerate Displayed (avg) — via HWiNFO/PresentMon, unreliable w/o Pro |
+| `RTSS_FPS` | Live FPS — via RivaTuner Statistics Server (optional, see above) |
 | `CUSTOM_N` | Any sensor at shared memory index N |
 
 ---
