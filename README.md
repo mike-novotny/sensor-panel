@@ -185,7 +185,7 @@ This will:
    - **Discover all your sensors** and save them to `%APPDATA%\Roaming\DS916Tray\ds916sensors.json`
    - Create a `%APPDATA%\Roaming\DS916Tray\Themes\` folder for storing your theme files
 
-> **Make sure JONSBO-AIO is fully closed** (including from the system tray) before running DS916Tray — both cannot use COM3 at the same time.
+> **If you've ever used JONSBO-AIO, make sure it's fully closed** (including from the system tray) before running DS916Tray — both cannot use the COM port at the same time. If you've never installed or used JONSBO-AIO, you can skip this.
 
 ### Step 6 — Design a Theme
 
