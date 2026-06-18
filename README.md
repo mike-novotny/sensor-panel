@@ -275,7 +275,7 @@ Open via tray icon → **⚙ Settings…**
 Configures the **11.5-hour auto-restart workaround** for HWiNFO64 free edition's shared memory time limit:
 
 1. Click **Detect** to find `HWiNFO64.exe` automatically
-2. Click **Install Restart Task** — creates a Windows Scheduled Task that silently restarts HWiNFO64 every 11.5 hours
+2. Click **Install Restart Task** — Windows will show a **UAC prompt**; click Yes to allow it. The tray app itself never needs to run as Administrator, only this one-time task registration step does.
 3. Status shows whether the task is currently installed
 
 ### RTSS (FPS) Tab

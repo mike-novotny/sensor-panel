@@ -1357,18 +1357,29 @@ def open_settings():
             messagebox.showerror('DS916', 'Please set the HWiNFO64.exe path first.', parent=win)
             return
         import subprocess
-        # Task: run every 690 minutes (11.5 hours), starting 11.5h from now
-        xml = f'''<?xml version="1.0"?>
-<Task xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
+        from datetime import datetime, timedelta
+        # Start time: 11.5 hours from now so the first restart is at the right cadence
+        start_dt = (datetime.now() + timedelta(hours=11, minutes=30)).strftime('%Y-%m-%dT%H:%M:%S')
+        # Task: TimeTrigger starting 11.5h from now, repeating every 690 minutes indefinitely
+        xml = f'''<?xml version="1.0" encoding="UTF-16"?>
+<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
-    <RepetitionTrigger>
+    <TimeTrigger>
       <Repetition>
         <Interval>PT690M</Interval>
         <StopAtDurationEnd>false</StopAtDurationEnd>
       </Repetition>
-    </RepetitionTrigger>
+      <StartBoundary>{start_dt}</StartBoundary>
+      <Enabled>true</Enabled>
+    </TimeTrigger>
   </Triggers>
-  <Actions>
+  <Principals>
+    <Principal id="Author">
+      <LogonType>InteractiveToken</LogonType>
+      <RunLevel>HighestAvailable</RunLevel>
+    </Principal>
+  </Principals>
+  <Actions Context="Author">
     <Exec>
       <Command>powershell.exe</Command>
       <Arguments>-WindowStyle Hidden -Command "Stop-Process -Name HWiNFO64 -Force -ErrorAction SilentlyContinue; Start-Sleep 3; Start-Process '{path}' -ArgumentList '-sensors'"</Arguments>
@@ -1378,30 +1389,72 @@ def open_settings():
     <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
     <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
     <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
+    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
+    <Hidden>false</Hidden>
+    <IdleSettings>
+      <StopOnIdleEnd>false</StopOnIdleEnd>
+      <RestartOnIdle>false</RestartOnIdle>
+    </IdleSettings>
   </Settings>
 </Task>'''
         xml_path = os.path.join(os.environ.get('TEMP','C:\\Temp'), 'ds916_hwinfo_task.xml')
-        with open(xml_path, 'w') as f: f.write(xml)
-        r = subprocess.run(
-            ['schtasks', '/create', '/tn', 'DS916_HWiNFO_Restart',
-             '/xml', xml_path, '/f'],
-            capture_output=True, text=True)
-        os.unlink(xml_path)
-        if r.returncode == 0:
+        with open(xml_path, 'w', encoding='utf-16') as f: f.write(xml)
+
+        # schtasks /create requires elevation — use ShellExecuteW with 'runas'
+        # so Windows shows a UAC prompt rather than silently failing with
+        # "Access is denied". We wait for the elevated process to finish,
+        # then check whether the task now exists to determine success.
+        import ctypes
+        args = f'/create /tn DS916_HWiNFO_Restart /xml "{xml_path}" /f'
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, 'runas', 'schtasks.exe', args, None, 0)  # SW_HIDE=0
+
+        # ShellExecuteW returns >32 on success (process launched); <=32 is an error
+        # (including 5=access denied if user cancelled UAC, 2=not found, etc.)
+        if ret <= 32:
+            try: os.unlink(xml_path)
+            except Exception: pass
+            if ret == 5:
+                messagebox.showerror('DS916',
+                    'UAC prompt was cancelled.\n\nElevation is required to create a Scheduled Task.',
+                    parent=win)
+            else:
+                messagebox.showerror('DS916',
+                    f'Failed to launch schtasks (ShellExecute error {ret}).',
+                    parent=win)
+            return
+
+        # Wait a moment for the elevated schtasks process to finish, then
+        # verify by checking whether the task now exists
+        import time
+        time.sleep(2)
+        try: os.unlink(xml_path)
+        except Exception: pass
+
+        if task_exists():
             cfg['hwinfo_path'] = path
             save_cfg(cfg)
             messagebox.showinfo('DS916',
                 'Scheduled task created!\n\nHWiNFO64 will restart every 11.5 hours\nto keep shared memory active.', parent=win)
             update_task_btn()
         else:
-            messagebox.showerror('DS916', f'Failed to create task:\n{r.stderr}', parent=win)
+            messagebox.showerror('DS916',
+                'Task creation may have failed — the task was not found after install.\n'
+                'Try running the tray app as Administrator if the UAC prompt did not appear.',
+                parent=win)
 
     def remove_task():
-        import subprocess
-        r = subprocess.run(
-            ['schtasks', '/delete', '/tn', 'DS916_HWiNFO_Restart', '/f'],
-            capture_output=True, text=True)
-        if r.returncode == 0:
+        import ctypes, time
+        ret = ctypes.windll.shell32.ShellExecuteW(
+            None, 'runas', 'schtasks.exe',
+            '/delete /tn DS916_HWiNFO_Restart /f', None, 0)
+        if ret <= 32:
+            if ret != 5:  # 5 = user cancelled UAC, silent is fine
+                messagebox.showerror('DS916',
+                    f'Failed to remove task (ShellExecute error {ret}).', parent=win)
+            return
+        time.sleep(2)
+        if not task_exists():
             messagebox.showinfo('DS916', 'Scheduled task removed.', parent=win)
         update_task_btn()
 
