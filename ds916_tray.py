@@ -29,7 +29,6 @@ DEFAULT_CFG = {
     'theme_path': '',
     'autostart':  True,
     'hwinfo_path': '',
-    'hwinfo_source': 'sharedmem',   # sharedmem (richer) with registry fallback
     'rtss_process': '',              # empty = auto-detect active 3D app; or an exact exe name (e.g. "game.exe") to pin a specific process
     'sensor_map': {
         'CPU_USAGE':   46,
@@ -182,6 +181,7 @@ def read_sharedmem(sensor_map):
     HWiNFOEntry: type(4) sensor_index(4) id(4) name_orig(128) name_user(128) unit(16) value(8d)
     Value is a double at offset 0x11C = 284 within each entry.
     """
+    global _shm_handle
     data = {}
     if not _shm_handle: return data
     try:
@@ -189,6 +189,26 @@ def read_sharedmem(sensor_map):
         kernel32, win_handle, ptr, SM_SIZE, off_e, sz_e, n_e = _shm_handle
         ptr = int(ptr)
         if not ptr or sz_e < 285 or n_e <= 0: return data
+
+        # Re-verify the signature on every read. If HWiNFO64 restarts (e.g.
+        # after the free version's 12-hour shared memory limit kicks in and
+        # the user restarts it), the OLD mapping we have open becomes stale
+        # — Windows may have destroyed and recreated the section under the
+        # same name. Without this check we'd keep silently failing forever
+        # on a dead handle, since _shm_handle would never go back to None
+        # and try_open_sharedmem() would never be called again.
+        VALID_SIGS = {0x57494648, 0x53695748}
+        sig_bytes = ctypes.string_at(ptr, 4)
+        sig = struct.unpack('<I', sig_bytes)[0]
+        if sig not in VALID_SIGS:
+            print('HWiNFO shared memory signature is now invalid (stale handle after a restart) - reconnecting next read', flush=True)
+            try:
+                kernel32.UnmapViewOfFile(ptr)
+                kernel32.CloseHandle(win_handle)
+            except Exception:
+                pass
+            _shm_handle = None
+            return data
 
         VALUE_OFFSET = 0x11C  # 284 — double at this offset within HWiNFOEntry
 
@@ -202,6 +222,9 @@ def read_sharedmem(sensor_map):
 
     except Exception as e:
         print(f'Shared memory read error: {e}')
+        # Any unexpected failure also resets the handle, rather than
+        # leaving a possibly-broken mapping in place indefinitely.
+        _shm_handle = None
     return data
 
 
@@ -263,18 +286,13 @@ def discover_sensors():
     return data
 
 def read_sensors():
-    """Read all sensor values using best available method."""
-    sm  = cfg.get('sensor_map', DEFAULT_CFG['sensor_map'])
-    src = cfg.get('hwinfo_source', 'sharedmem')
-    if src == 'sharedmem':
-        if _shm_handle is None:
-            try_open_sharedmem()
-        if _shm_handle is not None:
-            d = read_sharedmem(sm)
-        else:
-            d = read_registry(sm)
-    else:
-        d = read_registry(sm)
+    """Read all sensor values from HWiNFO64's shared memory. Returns an
+    empty dict if HWiNFO64 isn't running or shared memory isn't enabled —
+    callers should treat missing keys as 'sensor unavailable', not an error."""
+    sm = cfg.get('sensor_map', DEFAULT_CFG['sensor_map'])
+    if _shm_handle is None:
+        try_open_sharedmem()
+    d = read_sharedmem(sm) if _shm_handle is not None else {}
 
     # RTSS is optional and independent of HWiNFO — merge in FPS if available
     rtss_val = read_rtss_framerate()
@@ -1271,32 +1289,19 @@ def open_settings():
     ttk.Spinbox(t1, from_=1, to=30, textvariable=fps_var, width=6).grid(
         row=2, column=1, sticky='w', padx=8, pady=4)
 
-    lbl(t1, 'HWiNFO Source:', 3)
-    current_src = cfg.get('hwinfo_source', 'sharedmem')
-    src_options = ['sharedmem', 'registry']
-    src_var = tk.StringVar(value=current_src)
-    src_cb = ttk.Combobox(t1, textvariable=src_var, values=src_options,
-                          width=14, state='readonly')
-    src_cb.grid(row=3, column=1, sticky='w', padx=8, pady=4)
-    if current_src in src_options:
-        src_cb.current(src_options.index(current_src))
-    ttk.Label(t1, text='sharedmem = richer data  |  registry = no time limit',
-              font=('Segoe UI', 8), foreground='#555').grid(
-        row=4, column=0, columnspan=3, sticky='w', padx=8)
-
-    lbl(t1, 'Theme File:', 5)
+    lbl(t1, 'Theme File:', 3)
     theme_var = tk.StringVar(value=cfg.get('theme_path', ''))
     ttk.Entry(t1, textvariable=theme_var, width=28).grid(
-        row=5, column=1, sticky='ew', padx=8, pady=4)
+        row=3, column=1, sticky='ew', padx=8, pady=4)
     def browse_theme():
         p = filedialog.askopenfilename(
             parent=win, filetypes=[('DS916 Theme', '*.ds916theme *.zip')])
         if p: theme_var.set(p)
-    ttk.Button(t1, text='Browse…', command=browse_theme).grid(row=5, column=2, padx=4, pady=4)
+    ttk.Button(t1, text='Browse…', command=browse_theme).grid(row=3, column=2, padx=4, pady=4)
 
     auto_var = tk.BooleanVar(value=cfg.get('autostart', True))
     ttk.Checkbutton(t1, text='Start display automatically with Windows',
-                    variable=auto_var).grid(row=6, column=0, columnspan=3, sticky='w', padx=8, pady=6)
+                    variable=auto_var).grid(row=4, column=0, columnspan=3, sticky='w', padx=8, pady=6)
 
     # ── Tab 2: HWiNFO ────────────────────────────────────────────────────────
     t3 = ttk.Frame(nb); nb.add(t3, text='  HWiNFO  ')
@@ -1493,7 +1498,6 @@ def open_settings():
     def save_settings():
         cfg['com_port']      = com_var.get()
         cfg['fps']           = fps_var.get()
-        cfg['hwinfo_source'] = src_var.get()
         cfg['theme_path']    = theme_var.get()
         cfg['autostart']     = auto_var.get()
         cfg['rtss_process']  = proc_var.get().strip() if rtss_mode_var.get()=='manual' else ''
@@ -1754,18 +1758,12 @@ def _show_status_main():
 
     # HWiNFO
     s2 = section('HWiNFO64 Sensor Source')
-    src = cfg.get('hwinfo_source', 'sharedmem')
-    shm_active = src == 'sharedmem' and _shm_handle is not None
-    if src == 'sharedmem':
-        if shm_active:
-            src_label = 'Shared Memory  ✅'
-            src_col   = GRN
-        else:
-            src_label = 'Shared Memory (unavailable — using Registry fallback)'
-            src_col   = '#d4b84a'
+    if _shm_handle is not None:
+        src_label = 'Shared Memory  ✅'
+        src_col   = GRN
     else:
-        src_label = 'Registry (VSB Gadget)'
-        src_col   = TXT
+        src_label = 'Unavailable — HWiNFO64 not running or Shared Memory Support not enabled'
+        src_col   = '#d4b84a'
     row(s2, 'Source',       src_label, src_col)
 
     import subprocess
@@ -1880,18 +1878,17 @@ if __name__ == '__main__':
     _tk_root.withdraw()          # keep it invisible
     _tk_root.after(100, _poll_ui_queue)   # start queue polling
 
-    # Try shared memory if configured — don't permanently overwrite cfg on failure,
-    # just let read_sensors fall back to registry each call
-    if cfg.get('hwinfo_source', 'sharedmem') == 'sharedmem':
-        if try_open_sharedmem():
-            print('HWiNFO source: Shared Memory ✅')
-            # Auto-discover and save sensors on every startup
-            discover_sensors()
-        else:
-            print('HWiNFO source: Shared Memory failed — falling back to Registry for now')
-            print('  (will retry each sensor read; start HWiNFO64 with Shared Memory enabled)')
+    # Try shared memory at startup. If it's not available yet (HWiNFO64 not
+    # running, or Shared Memory Support not enabled), don't treat this as
+    # fatal — read_sensors() retries on every sensor read, so it'll connect
+    # automatically as soon as HWiNFO64 becomes available.
+    if try_open_sharedmem():
+        print('HWiNFO source: Shared Memory ✅')
+        # Auto-discover and save sensors on every startup
+        discover_sensors()
     else:
-        print('HWiNFO source: Registry (VSB Gadget)')
+        print('HWiNFO source: unavailable for now — will keep retrying on each sensor read')
+        print('  (start HWiNFO64 with Settings -> General -> Shared Memory Support enabled)')
 
     # Set autostart if configured
     if cfg.get('autostart', True):

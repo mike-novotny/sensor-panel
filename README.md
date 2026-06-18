@@ -265,7 +265,6 @@ Open via tray icon → **⚙ Settings…**
 |---------|-------------|
 | **COM Port** | Serial port for the DS916 — click **Auto-detect** to find it automatically |
 | **FPS** | Frames per second to stream (default: 6, max: 30) |
-| **HWiNFO Source** | `sharedmem` for full sensor data, `registry` for no time limit |
 | **Theme File** | Path to the last loaded theme (auto-remembered) |
 | **Start with Windows** | Adds/removes the app from Windows startup |
 
@@ -430,13 +429,12 @@ RTSS support is fully optional — if RTSS isn't installed or running, the `RTSS
 
 ## HWiNFO64 Shared Memory — 12-Hour Limit
 
-HWiNFO64 free edition disables shared memory after 12 hours. The tray app automatically falls back to registry (VSB Gadget) mode, but this provides fewer sensors.
+HWiNFO64 free edition disables shared memory after 12 hours of continuous operation. When this happens, sensor values will stop updating until HWiNFO64 is restarted.
 
 **Solutions:**
 
 1. **Auto-restart task** (recommended) — Settings → HWiNFO tab → Install Restart Task. Creates a Windows Scheduled Task that silently restarts HWiNFO64 every 11.5 hours with no window appearing
-2. **Manual restart** — restart HWiNFO64 manually when needed
-3. **Registry mode** — change HWiNFO Source to `registry` in Settings. No time limit but requires configuring the HWiNFO Gadget manually
+2. **Manual restart** — restart HWiNFO64 manually when needed; the tray app will automatically reconnect to the fresh shared memory session within a moment
 
 Check the current source at any time via tray icon → **ℹ Status…**
 
@@ -449,7 +447,7 @@ Check the current source at any time via tray icon → **ℹ Status…**
 Right-click tray icon → **ℹ Status…** to see a live dashboard:
 
 - **Display** — streaming status, COM port, FPS, active theme name and resolution
-- **HWiNFO64 Sensor Source** — shows `Shared Memory ✅` or `Registry (fallback)` with yellow warning, plus whether the auto-restart task is installed
+- **HWiNFO64 Sensor Source** — shows `Shared Memory ✅` or an unavailable warning if HWiNFO64 isn't running, plus whether the auto-restart task is installed
 - **Live Sensor Snapshot** — current values for CPU/GPU usage and temperature, motherboard temp, CPU fan
 - **System** — Windows startup status
 
