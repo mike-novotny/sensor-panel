@@ -6,10 +6,14 @@ Versions follow [Semantic Versioning](https://semver.org/) loosely: **MAJOR** fo
 
 ## [Unreleased]
 
+### Changed
+- `build.bat` now automatically closes any running `DS916Tray.exe` before overwriting it, skips shortcut recreation if shortcuts already exist, and offers to relaunch the app immediately after a successful build — removing the need to manually uninstall, close, or relaunch between iterations during normal development.
+- Clarified in README and wiki that **Uninstall** is for removing the app from a machine entirely, not a routine step before rebuilding — `build.bat` already handles closing/overwriting a running instance on its own.
+
 ## [1.4.0] — Logging System & HWiNFO Auto-Restart Redesign
 
 ### Added
-- **Logging system.** All console output migrated from bare `print()` calls to Python's `logging` module, written to `%APPDATA%\DS916Tray\ds916tray.log`. Three configurable levels in **Settings → General → Logging**: `Off`, `Normal` (default — startup, theme loads, connection status, settings changes, errors), and `Verbose` (adds per-frame/per-sensor-read diagnostics for active troubleshooting). Log file is capped at ~1MB via `RotatingFileHandler` with one backup kept, so it can never grow unbounded. Added **📁 Open Log Folder** button for quick access.
+- **Logging system.** All console output migrated from bare `print()` calls to Python's `logging` module, written to `%APPDATA%\DS916Tray\ds916_tray_log.txt`. Three configurable levels in **Settings → General → Logging**: `Off`, `Normal` (default — startup, theme loads, connection status, settings changes, errors), and `Verbose` (adds per-frame/per-sensor-read diagnostics for active troubleshooting). Log file is capped at ~1MB via `RotatingFileHandler` with one backup kept, so it can never grow unbounded. Added **📁 Open Log Folder** button for quick access.
 - Settings changes are now explicitly logged (`Setting changed: key = old -> new`), including a guaranteed final log line when logging itself is switched off, so there's always a record of why logging stopped.
 
 ### Changed

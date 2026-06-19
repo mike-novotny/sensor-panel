@@ -113,13 +113,17 @@ port.close()
 sensor-panel/
 ├── theme_builder.html    # Visual theme designer (open in Chrome or Edge)
 ├── ds916_tray.py         # Background renderer + system tray app
-├── build.bat             # Build + install script — compiles the exe, installs
-│                         # it and theme_builder.html to %APPDATA%\DS916Tray\,
-│                         # and creates Desktop/Start Menu shortcuts
+├── build.bat             # Build + install script — compiles the exe, closes
+│                         # any running instance, installs it and
+│                         # theme_builder.html to %APPDATA%\DS916Tray\, creates
+│                         # Desktop/Start Menu shortcuts (first run only), and
+│                         # offers to relaunch the app immediately
 └── README.md
 ```
 
-After running `build.bat`, this entire folder is no longer needed — everything the app uses lives in `%APPDATA%\DS916Tray\` from that point on.
+After running `build.bat`, this entire folder is no longer needed for normal use — everything the app uses lives in `%APPDATA%\DS916Tray\` from that point on. Keep the folder around if you plan to make further code changes.
+
+**You should not need to use Uninstall as part of a normal edit/rebuild loop.** `build.bat` already closes any running instance before overwriting it, so simply re-running `build.bat` after a code change is enough — no need to uninstall first. Uninstall (tray icon → **🗑 Uninstall…**) is for when you actually want to remove the app from a machine, not as a routine step before every rebuild.
 
 ---
 
@@ -475,7 +479,7 @@ The window auto-sizes to its content (capped at 90% of your screen height) and h
 
 The tray app writes a log file to:
 ```
-%APPDATA%\DS916Tray\ds916tray.log
+%APPDATA%\DS916Tray\ds916_tray_log.txt
 ```
 
 Configurable in **Settings → General → Logging**:
@@ -567,6 +571,8 @@ Themes are saved as a single **`.ds916theme`** file — a JSON document with all
 ## Uninstalling
 
 Right-click the tray icon → **🗑 Uninstall…**
+
+> **If you're just rebuilding after a code change, you don't need this.** Just re-run `build.bat` — it closes the running instance and overwrites it automatically. Uninstall is for removing the app from a machine entirely.
 
 This will:
 1. Remove DS916Tray from Windows startup

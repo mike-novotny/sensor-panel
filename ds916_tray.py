@@ -20,7 +20,7 @@ APP_NAME    = 'DS916Tray'
 CONFIG_DIR  = os.path.join(os.environ.get('APPDATA',''), APP_NAME)
 THEMES_DIR  = os.path.join(CONFIG_DIR, 'Themes')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
-LOG_FILE    = os.path.join(CONFIG_DIR, 'ds916tray.log')
+LOG_FILE    = os.path.join(CONFIG_DIR, 'ds916_tray_log.txt')
 os.makedirs(CONFIG_DIR, exist_ok=True)
 os.makedirs(THEMES_DIR, exist_ok=True)
 
@@ -34,7 +34,7 @@ os.makedirs(THEMES_DIR, exist_ok=True)
 #             RTSS scan details -- for actively diagnosing a problem)
 #
 # RotatingFileHandler caps file size so logs can never grow unbounded: once
-# ds916tray.log hits ~1MB it's rotated to ds916tray.log.1 (one backup kept),
+# ds916_tray_log.txt hits ~1MB it's rotated to ds916_tray_log.txt.1 (one backup kept),
 # so total on-disk log size is bounded to roughly 2MB no matter how long the
 # app has been running.
 LOG_LEVEL_MAP = {'off': logging.CRITICAL + 1, 'normal': logging.INFO, 'verbose': logging.DEBUG}
