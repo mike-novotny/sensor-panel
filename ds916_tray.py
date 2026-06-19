@@ -1406,9 +1406,65 @@ def open_settings():
             return
         import subprocess
         from datetime import datetime, timedelta
-        # Start time: 11.5 hours from now so the first restart is at the right cadence
-        start_dt = (datetime.now() + timedelta(hours=11, minutes=30)).strftime('%Y-%m-%dT%H:%M:%S')
-        # Task: TimeTrigger starting 11.5h from now, repeating every 690 minutes indefinitely
+
+        # Align the first restart with HWiNFO64's actual process start time,
+        # not the moment Install was clicked — these can differ by hours if
+        # HWiNFO64 was already running for a while before this task gets set
+        # up, which would otherwise leave a real gap where shared memory is
+        # dead before the task ever gets a chance to restart it.
+        hwinfo_start = None
+        try:
+            import ctypes
+            from ctypes import wintypes
+            psapi = ctypes.windll.psapi
+            kernel32 = ctypes.windll.kernel32
+            # Enumerate processes and find HWiNFO64.exe's start time via its PID
+            pids = (wintypes.DWORD * 1024)()
+            cb_needed = wintypes.DWORD()
+            psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(cb_needed))
+            count = cb_needed.value // ctypes.sizeof(wintypes.DWORD)
+            PROCESS_QUERY_INFORMATION = 0x0400
+            for i in range(count):
+                pid = pids[i]
+                if not pid: continue
+                hproc = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid)
+                if not hproc: continue
+                try:
+                    name_buf = ctypes.create_unicode_buffer(260)
+                    size = wintypes.DWORD(260)
+                    if psapi.GetModuleBaseNameW(hproc, None, name_buf, size):
+                        if name_buf.value.lower() == 'hwinfo64.exe':
+                            creation = wintypes.FILETIME()
+                            exit_t = wintypes.FILETIME()
+                            kernel_t = wintypes.FILETIME()
+                            user_t = wintypes.FILETIME()
+                            if kernel32.GetProcessTimes(hproc, ctypes.byref(creation),
+                                    ctypes.byref(exit_t), ctypes.byref(kernel_t), ctypes.byref(user_t)):
+                                ft = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+                                # FILETIME is 100ns intervals since 1601-01-01
+                                hwinfo_start = datetime(1601,1,1) + timedelta(microseconds=ft/10)
+                finally:
+                    kernel32.CloseHandle(hproc)
+                if hwinfo_start: break
+        except Exception as e:
+            print(f'Could not detect HWiNFO64 start time: {e}')
+
+        if hwinfo_start:
+            # First restart at HWiNFO_start + 11.5h. If that moment has
+            # already passed (HWiNFO has been up 11.5h+ already), schedule
+            # the first run very soon instead of waiting a further 11.5h.
+            first_run = hwinfo_start + timedelta(hours=11, minutes=30)
+            if first_run <= datetime.now():
+                first_run = datetime.now() + timedelta(minutes=2)
+            start_dt = first_run.strftime('%Y-%m-%dT%H:%M:%S')
+            print(f'Aligning restart task to HWiNFO64 start time {hwinfo_start} -> first run {first_run}')
+        else:
+            # Couldn't detect HWiNFO64's start time (not running, or detection
+            # failed) — fall back to 11.5h from now as before.
+            start_dt = (datetime.now() + timedelta(hours=11, minutes=30)).strftime('%Y-%m-%dT%H:%M:%S')
+            print('Could not detect HWiNFO64 process start time — using 11.5h from now as fallback')
+
+        # Task: TimeTrigger starting at the aligned time, repeating every 690 minutes indefinitely
         xml = f'''<?xml version="1.0" encoding="UTF-16"?>
 <Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
   <Triggers>
@@ -1683,13 +1739,16 @@ def toggle_display(icon=None, item=None):
 
 def open_builder(icon=None, item=None):
     import webbrowser
-    exe_dir = os.path.dirname(sys.executable if getattr(sys,'frozen',False) else os.path.abspath(__file__))
-    html = os.path.join(exe_dir, 'theme_builder.html')
+    # theme_builder.html now lives in CONFIG_DIR (AppData), installed there
+    # by build.bat alongside the exe — not next to wherever the exe happens
+    # to be run from. This keeps everything for this app in one place.
+    html = os.path.join(CONFIG_DIR, 'theme_builder.html')
     if os.path.exists(html):
         webbrowser.open('file:///'+html.replace('\\','/'))
     else:
         _dispatch(lambda: messagebox.showwarning('DS916',
-            'theme_builder.html not found next to this exe.\n\nPlace it in:\n'+exe_dir))
+            'theme_builder.html not found in:\n'+CONFIG_DIR+
+            '\n\nIf you built this app yourself, re-run build.bat to reinstall it there.'))
 
 def open_settings_tray(icon=None, item=None):
     _dispatch(open_settings)
@@ -1709,9 +1768,13 @@ def _uninstall_main():
         'DS916 Tray — Uninstall',
         'This will:\n\n'
         '  • Remove DS916Tray from Windows startup\n'
-        '  • Delete config and data from AppData\n'
+        '  • Remove the Desktop and Start Menu shortcuts\n'
+        '  • Delete theme_builder.html, config, and discovered sensor data\n'
         '  • Close the tray app\n\n'
-        'Your theme files will NOT be deleted.\n\n'
+        'Your theme files (.ds916theme) will NOT be deleted.\n\n'
+        'Note: DS916Tray.exe itself can\'t delete itself while running — '
+        'it will be left behind in the (now otherwise empty) install folder. '
+        'You can delete it manually once the app has closed.\n\n'
         'Continue?',
         parent=_tk_root
     )
@@ -1721,16 +1784,46 @@ def _uninstall_main():
     # 1. Remove from startup
     set_autostart(False)
 
-    # 2. Delete config folder
+    # 2. Remove Desktop and Start Menu shortcuts created by build.bat
+    try:
+        import ctypes.wintypes
+        CSIDL_DESKTOPDIRECTORY = 0x10
+        CSIDL_PROGRAMS = 0x02
+        buf = ctypes.create_unicode_buffer(260)
+        shortcut_dirs = []
+        for csidl in (CSIDL_DESKTOPDIRECTORY, CSIDL_PROGRAMS):
+            ctypes.windll.shell32.SHGetFolderPathW(0, csidl, 0, 0, buf)
+            shortcut_dirs.append(buf.value)
+        for d in shortcut_dirs:
+            lnk = os.path.join(d, 'DS916 Tray.lnk')
+            if os.path.exists(lnk):
+                os.unlink(lnk)
+                print(f'Removed shortcut: {lnk}')
+    except Exception as e:
+        print(f'Shortcut removal error: {e}')
+
+    # 3. Delete everything in CONFIG_DIR (theme_builder.html, config, sensors)
+    # EXCEPT the running exe itself (Windows won't let us delete it while
+    # it's open — left behind harmlessly) and the Themes subfolder (the
+    # dialog explicitly promises these won't be deleted).
     import shutil
     if os.path.exists(CONFIG_DIR):
-        try:
-            shutil.rmtree(CONFIG_DIR)
-            print(f'Removed config: {CONFIG_DIR}')
-        except Exception as e:
-            print(f'Config removal error: {e}')
+        exe_name = 'DS916Tray.exe'
+        themes_name = os.path.basename(THEMES_DIR)
+        for entry in os.listdir(CONFIG_DIR):
+            if entry == exe_name or entry == themes_name:
+                continue
+            full = os.path.join(CONFIG_DIR, entry)
+            try:
+                if os.path.isdir(full):
+                    shutil.rmtree(full)
+                else:
+                    os.unlink(full)
+                print(f'Removed: {full}')
+            except Exception as e:
+                print(f'Removal error for {full}: {e}')
 
-    # 3. Clean up temp font files
+    # 4. Clean up temp font files
     for path in _custom_font_files.values():
         try:
             if os.path.exists(path):
@@ -1739,12 +1832,14 @@ def _uninstall_main():
 
     messagebox.showinfo(
         'DS916 Tray — Uninstalled',
-        'DS916 Tray has been removed from startup and AppData.\n\n'
-        'You can now delete DS916Tray.exe and theme_builder.html manually.',
+        'DS916 Tray has been removed from startup, and shortcuts and '
+        'data have been deleted.\n\n'
+        'DS916Tray.exe itself is left in:\n'+CONFIG_DIR+
+        '\n\nYou can delete that file manually now that the app is closing.',
         parent=_tk_root
     )
 
-    # 4. Exit
+    # 5. Exit
     quit_app()
 
 _status_win = None

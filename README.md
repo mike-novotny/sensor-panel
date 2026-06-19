@@ -113,9 +113,13 @@ port.close()
 sensor-panel/
 ├── theme_builder.html    # Visual theme designer (open in Chrome or Edge)
 ├── ds916_tray.py         # Background renderer + system tray app
-├── build.bat             # One-click build script (creates DS916Tray.exe)
+├── build.bat             # Build + install script — compiles the exe, installs
+│                         # it and theme_builder.html to %APPDATA%\DS916Tray\,
+│                         # and creates Desktop/Start Menu shortcuts
 └── README.md
 ```
+
+After running `build.bat`, this entire folder is no longer needed — everything the app uses lives in `%APPDATA%\DS916Tray\` from that point on.
 
 ---
 
@@ -160,7 +164,7 @@ git clone https://github.com/mike-novotny/sensor-panel.git
 ```
 Or download the ZIP from the GitHub page and extract it to a folder of your choice.
 
-### Step 4 — Build the Tray App
+### Step 4 — Build and Install the Tray App
 
 Open a Command Prompt **in the folder where you extracted the files** and run:
 ```
@@ -169,36 +173,36 @@ build.bat
 
 This will:
 1. Install all Python dependencies (`pillow`, `pyserial`, `pystray`, `pyinstaller`)
-2. Compile `ds916_tray.py` into a standalone `dist\DS916Tray.exe`
-3. Copy `theme_builder.html` into the `dist\` folder
+2. Compile `ds916_tray.py` into a standalone `DS916Tray.exe`
+3. Install `DS916Tray.exe` and `theme_builder.html` together into `%APPDATA%\DS916Tray\` — keeping the app, the theme builder, your config, discovered sensors, and saved themes all in one place for easy cleanup later
+4. Create a **Desktop shortcut** and a **Start Menu shortcut**, both named "DS916 Tray", pointing at the installed copy
 
-> The build takes 1-3 minutes. When it finishes everything you need is in the `dist\` folder.
+> The build takes 1-3 minutes. Once it finishes, the folder you extracted the project into (and its `dist\`/`build\` subfolders) is no longer needed — everything the app uses going forward lives in `%APPDATA%\DS916Tray\`. You can delete the original extracted folder if you'd like.
 
 ### Step 5 — First Launch
 
-1. Navigate to the `dist\` folder
-2. Double-click **`DS916Tray.exe`**
-3. A small icon appears in your system tray (bottom-right of the taskbar)
-4. The app will:
+1. Launch **DS916 Tray** from the Desktop shortcut or Start Menu
+2. A small icon appears in your system tray (bottom-right of the taskbar)
+3. The app will:
    - Add itself to Windows startup automatically
    - Connect to HWiNFO64 shared memory
-   - **Discover all your sensors** and save them to `%APPDATA%\Roaming\DS916Tray\ds916sensors.json`
-   - Create a `%APPDATA%\Roaming\DS916Tray\Themes\` folder for storing your theme files
+   - **Discover all your sensors** and save them to `%APPDATA%\DS916Tray\ds916sensors.json`
+   - Create a `%APPDATA%\DS916Tray\Themes\` folder for storing your theme files
 
 > **If you've ever used JONSBO-AIO, make sure it's fully closed** (including from the system tray) before running DS916Tray — both cannot use the COM port at the same time. If you've never installed or used JONSBO-AIO, you can skip this.
 
 ### Step 6 — Design a Theme
 
-1. Open **`theme_builder.html`** in Chrome or Edge
-2. When prompted, click **Browse for file…** and navigate to `%APPDATA%\Roaming\DS916Tray\ds916sensors.json` to load your system's sensor list
+1. Right-click the DS916 tray icon and choose **🎨 Open Theme Builder** — this opens `theme_builder.html` directly from its installed location in your browser (you no longer need to find the file manually)
+2. When prompted, click **Browse for file…** and navigate to `%APPDATA%\DS916Tray\ds916sensors.json` to load your system's sensor list
 3. Design your theme (see [Theme Builder](#theme-builder) section below)
-4. Click **💾 Save Theme** and save to `%APPDATA%\Roaming\DS916Tray\Themes\`
+4. Click **💾 Save Theme** and save to `%APPDATA%\DS916Tray\Themes\`
 
 ### Step 7 — Load the Theme
 
 1. Right-click the DS916 tray icon
 2. Click **📂 Load Theme…**
-3. Navigate to `%APPDATA%\Roaming\DS916Tray\Themes\` and select your `.ds916theme` file
+3. Navigate to `%APPDATA%\DS916Tray\Themes\` and select your `.ds916theme` file
 4. The screen should immediately start displaying your theme
 
 ---
@@ -392,7 +396,7 @@ From there, treat it like any other theme: drag elements to fine-tune positions,
 When the tray app starts with HWiNFO64 shared memory enabled, it automatically scans all available sensors and saves them to:
 
 ```
-%APPDATA%\Roaming\DS916Tray\ds916sensors.json
+%APPDATA%\DS916Tray\ds916sensors.json
 ```
 
 This file contains every sensor HWiNFO64 exposes, including hardware-specific sensors like additional fan headers, liquid cooling temperatures, per-core data, and framerate metrics.
@@ -541,10 +545,11 @@ Right-click the tray icon → **🗑 Uninstall…**
 
 This will:
 1. Remove DS916Tray from Windows startup
-2. Delete `%APPDATA%\Roaming\DS916Tray\` (config, sensor data, themes folder)
-3. Close the app
+2. Remove the Desktop and Start Menu shortcuts
+3. Delete `theme_builder.html`, config, and discovered sensor data from `%APPDATA%\DS916Tray\` (your `.ds916theme` theme files are **not** deleted)
+4. Close the app
 
-Then manually delete `DS916Tray.exe` and `theme_builder.html`.
+`DS916Tray.exe` itself can't delete itself while running, so it's left behind in `%APPDATA%\DS916Tray\` — delete it manually once the app has fully closed, or just leave it; it's harmless and inert on its own.
 
 ---
 
