@@ -30,32 +30,13 @@ DEFAULT_CFG = {
     'autostart':  True,
     'hwinfo_path': '',
     'rtss_process': '',              # empty = auto-detect active 3D app; or an exact exe name (e.g. "game.exe") to pin a specific process
-    'sensor_map': {
-        'CPU_USAGE':   46,
-        'CPU_TEMP':    94,
-        'MB_TEMP':    139,
-        'CPU_FAN':    162,
-        'CHASSIS_FAN1':163,
-        'CHASSIS_FAN2':164,
-        'GPU_TEMP':   194,
-        'GPU_FAN1':   204,
-        'GPU_FAN2':   205,
-        'GPU_USAGE':  224,
-        'VRAM_USAGE': 228,
-        'RAM_USAGE':    5,
-        'RAM_USED_GB':  3,
-        'RAM_TOTAL':  None,
-        'RAM_FREE_GB':  4,
-        'DISK_READ':  None,
-        'DISK_WRITE': None,
-        'NET_DOWN':   302,
-        'NET_UP':     303,
-        # FRAMERATE intentionally omitted from defaults — HWiNFO's
-        # PresentMon tracking is unreliable without an HWiNFO Pro license
-        # to exclude background applications. Available via discovery
-        # if the user wants to map it manually.
-        'FRAMERATE':  None,
-    }
+    # Note: there is no persisted sensor index map here. Standard sensor
+    # keys (CPU_USAGE, GPU_TEMP, etc.) are resolved fresh by NAME on every
+    # single read inside read_sharedmem() -- nothing is ever cached across
+    # restarts, so there is nothing that can go stale if HWiNFO's internal
+    # sensor ordering shifts (driver update, new device added, etc.).
+    # CUSTOM_N entries for sensors with no standard name come from the
+    # currently loaded theme's own sensorMap instead of a global config.
 }
 
 def load_cfg():
@@ -64,9 +45,11 @@ def load_cfg():
         # Merge with defaults for any missing keys
         for k,v in DEFAULT_CFG.items():
             if k not in c: c[k]=v
-        if 'sensor_map' in c:
-            for k,v in DEFAULT_CFG['sensor_map'].items():
-                if k not in c['sensor_map']: c['sensor_map'][k]=v
+        # Drop any leftover sensor_map from an older config version -- it's
+        # no longer used for anything and keeping it around risks confusion
+        # (and was the source of a real bug: a stale cached index could
+        # silently persist forever across HWiNFO restarts/reorderings).
+        c.pop('sensor_map', None)
         return c
     except: return dict(DEFAULT_CFG)
 
@@ -175,8 +158,61 @@ def try_open_sharedmem():
         return False
 
 
-def read_sharedmem(sensor_map):
-    """Read sensor values from HWiNFO shared memory.
+# Canonical HWiNFO sensor names for each standard sensor key. Looked up by
+# NAME on every single read (like the RTSS reader already does for process
+# names) rather than caching a numeric index anywhere — this is what
+# actually eliminates the staleness problem: there's nothing to go stale
+# if nothing is ever persisted across HWiNFO restarts/reorderings.
+STANDARD_SENSOR_NAMES = {
+    'CPU_USAGE':    ['Total CPU Usage'],
+    'CPU_TEMP':     ['CPU (Tctl/Tdie)', 'CPU Package', 'CPU Temperature'],
+    'CPU_FAN':      ['CPU1', 'CPU Fan', 'CPU_OPT'],
+    'CPU_FREQ':     ['CPU Clock', 'Core Clocks (avg)'],
+    'CPU_POWER':    ['CPU Package Power', 'CPU Power'],
+    'CPU_VOLTAGE':  ['CPU Core Voltage', 'Vcore'],
+    'GPU_USAGE':    ['GPU Core Load', 'GPU Usage', 'GPU Load'],
+    'GPU_TEMP':     ['GPU Temperature', 'GPU Temp'],
+    'GPU_FAN1':     ['GPU Fan1', 'GPU Fan 1'],
+    'GPU_FAN2':     ['GPU Fan2', 'GPU Fan 2'],
+    'GPU_FREQ':     ['GPU Clock'],
+    'GPU_POWER':    ['GPU Power'],
+    'VRAM_USAGE':   ['GPU Memory Usage', 'GPU Memory Load'],
+    'VRAM_USED':    ['GPU Memory Used'],
+    'RAM_USAGE':    ['Physical Memory Load'],
+    'RAM_USED_GB':  ['Physical Memory Used'],
+    'RAM_FREE_GB':  ['Physical Memory Available'],
+    'RAM_TOTAL':    ['Physical Memory Total'],
+    'DISK_USAGE':   ['Disk Usage'],
+    'DISK_USED':    ['Disk Used'],
+    'DISK_FREE':    ['Disk Free'],
+    'DISK_TEMP':    ['Drive Temperature'],
+    'DISK_READ':    ['Read Rate', 'Disk Read Rate'],
+    'DISK_WRITE':   ['Write Rate', 'Disk Write Rate'],
+    'MB_TEMP':      ['Motherboard'],
+    'CHASSIS_FAN1': ['Chassis1', 'Chassis Fan 1', 'CHA_FAN1'],
+    'CHASSIS_FAN2': ['Chassis2', 'Chassis Fan 2', 'CHA_FAN2'],
+    'CHASSIS_FAN3': ['Chassis3', 'Chassis Fan 3', 'CHA_FAN3'],
+    'NET_DOWN':     ['Current DL rate', 'Download rate'],
+    'NET_UP':       ['Current UP rate', 'Upload rate'],
+    'NET_PING':     ['Ping'],
+    'BATTERY':      ['Battery Charge Level'],
+    # FRAMERATE intentionally not auto-mapped — HWiNFO's PresentMon
+    # tracking is unreliable without an HWiNFO Pro license; users who
+    # want to try it anyway can wire up a CUSTOM_N key manually.
+}
+
+def read_sharedmem(sensor_map=None):
+    """Read sensor values from HWiNFO shared memory, resolving every
+    standard sensor key (and any CUSTOM_N keys) fresh by NAME on every
+    call. No numeric index is ever cached in config.json — if HWiNFO's
+    internal sensor ordering shifts after a restart, driver update, or
+    new device being added, this re-resolves correctly on the very next
+    read with no stale state possible.
+
+    sensor_map is accepted for backwards compatibility (CUSTOM_N entries
+    from older saved themes may still carry a literal index) but standard
+    keys always resolve by name, ignoring any cached index for them.
+
     Layout from: github.com/namazso/hwinfosharedmem.h
     HWiNFOEntry: type(4) sensor_index(4) id(4) name_orig(128) name_user(128) unit(16) value(8d)
     Value is a double at offset 0x11C = 284 within each entry.
@@ -212,13 +248,37 @@ def read_sharedmem(sensor_map):
 
         VALUE_OFFSET = 0x11C  # 284 — double at this offset within HWiNFOEntry
 
-        idx_to_key = {v: k for k, v in sensor_map.items() if v is not None}
-        for idx, key in idx_to_key.items():
-            if idx >= n_e: continue
+        # Build name -> (index, value) for every entry in ONE pass, then
+        # resolve every standard key against it by name. This is the same
+        # cost as before (one scan of all entries per read) but eliminates
+        # any persisted index entirely.
+        name_to_val = {}
+        for idx in range(n_e):
             entry_ptr = ptr + off_e + idx * sz_e
+            name_bytes = ctypes.string_at(entry_ptr + 0x0C, 128)
+            name = name_bytes.rstrip(b'\x00').decode('ascii', 'replace').strip()
+            if not name: continue
             val_bytes = ctypes.string_at(entry_ptr + VALUE_OFFSET, 8)
             val = struct.unpack('<d', val_bytes)[0]
-            data[key] = val
+            name_to_val[name] = val
+
+        for key, candidates in STANDARD_SENSOR_NAMES.items():
+            for cname in candidates:
+                if cname in name_to_val:
+                    data[key] = name_to_val[cname]
+                    break
+
+        # CUSTOM_N keys (manually wired sensors not covered by the standard
+        # name table above) still use whatever literal index was saved with
+        # the theme/sensor_map, since there's no name to re-resolve against
+        # for an arbitrary user-picked index.
+        if sensor_map:
+            for skey, idx in sensor_map.items():
+                if not skey.startswith('CUSTOM_') or idx is None: continue
+                if idx >= n_e: continue
+                entry_ptr = ptr + off_e + idx * sz_e
+                val_bytes = ctypes.string_at(entry_ptr + VALUE_OFFSET, 8)
+                data[skey] = struct.unpack('<d', val_bytes)[0]
 
     except Exception as e:
         print(f'Shared memory read error: {e}')
@@ -229,7 +289,7 @@ def read_sharedmem(sensor_map):
 
 
 def discover_sensors():
-    """Scan all HWiNFO shared memory entries and save to ds916sensors.json.
+    """Scan all HWiNFO shared memory entries and save to hwinfo_sensors.json.
     Also reads the sensor group (device name) section so device names like
     'AMD Ryzen 5 5600X' and 'ASRock B550M Steel Legend' are available in
     the theme builder's + Sensors picker as static label elements.
@@ -283,7 +343,7 @@ def discover_sensors():
             })
 
         out = {'generated': str(datetime.now()), 'device_names': device_names, 'sensors': sensors}
-        sensors_path = os.path.join(CONFIG_DIR, 'ds916sensors.json')
+        sensors_path = os.path.join(CONFIG_DIR, 'hwinfo_sensors.json')
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(sensors_path, 'w', encoding='utf-8') as f:
             json.dump(out, f, indent=2)
@@ -293,30 +353,23 @@ def discover_sensors():
         print(f'Sensor discovery error: {e}')
         return False
 
-
-    """Read sensor values from HWiNFO64 VSB registry. Returns {KEY: value}."""
-    data = {}
-    try:
-        key = winreg.OpenKey(winreg.HKEY_CURRENT_USER, r'SOFTWARE\HWiNFO64\VSB')
-        for skey, idx in sensor_map.items():
-            if idx is None: continue
-            try:
-                raw = winreg.QueryValueEx(key, f'ValueRaw{idx}')[0]
-                data[skey] = float(raw)
-            except: pass
-        winreg.CloseKey(key)
-    except Exception as e:
-        print(f'Registry read error: {e}')
-    return data
-
 def read_sensors():
     """Read all sensor values from HWiNFO64's shared memory. Returns an
     empty dict if HWiNFO64 isn't running or shared memory isn't enabled —
     callers should treat missing keys as 'sensor unavailable', not an error."""
-    sm = cfg.get('sensor_map', DEFAULT_CFG['sensor_map'])
+    # CUSTOM_N entries (manually wired sensors HWiNFO doesn't have a
+    # standard name for) come from the currently loaded THEME's own
+    # sensorMap, not a persisted global config -- standard keys resolve
+    # by name fresh on every read inside read_sharedmem() itself and need
+    # no map passed in at all.
+    custom_map = {}
+    if _current_theme:
+        for k, v in _current_theme.get('sensorMap', {}).items():
+            if k.startswith('CUSTOM_') and v is not None:
+                custom_map[k] = v
     if _shm_handle is None:
         try_open_sharedmem()
-    d = read_sharedmem(sm) if _shm_handle is not None else {}
+    d = read_sharedmem(custom_map) if _shm_handle is not None else {}
 
     # RTSS is optional and independent of HWiNFO — merge in FPS values if available
     rtss_vals = read_rtss_framerate()
@@ -1120,56 +1173,11 @@ def load_theme(path):
         else:
             return False
 
-        # Load sensor map — priority order:
-        # 1. Discovered sensors file (most accurate for this system)
-        # 2. Config sensor_map (user-configured)
-        # 3. Theme's embedded sensorMap (least reliable — may have wrong indices)
-        sensors_path = os.path.join(CONFIG_DIR, 'ds916sensors.json')
-        if os.path.exists(sensors_path):
-            try:
-                with open(sensors_path, encoding='utf-8') as sf:
-                    disc = json.load(sf)
-                # Build name->index map from discovered sensors
-                name_to_idx = {s['name']: s['index'] for s in disc.get('sensors',[])}
-                # Canonical names for each sensor key
-                KEY_NAMES = {
-                    'CPU_USAGE':    ['Total CPU Usage'],
-                    'CPU_TEMP':     ['CPU (Tctl/Tdie)', 'CPU Package', 'CPU Temperature'],
-                    'MB_TEMP':      ['Motherboard'],
-                    'CPU_FAN':      ['CPU1', 'CPU Fan', 'CPU_OPT'],
-                    'CHASSIS_FAN1': ['Chassis1', 'Chassis Fan 1', 'CHA_FAN1'],
-                    'CHASSIS_FAN2': ['Chassis2', 'Chassis Fan 2', 'CHA_FAN2'],
-                    'CHASSIS_FAN3': ['Chassis3', 'Chassis Fan 3', 'CHA_FAN3'],
-                    'GPU_TEMP':     ['GPU Temperature', 'GPU Temp'],
-                    'GPU_FAN1':     ['GPU Fan1', 'GPU Fan 1'],
-                    'GPU_FAN2':     ['GPU Fan2', 'GPU Fan 2'],
-                    'GPU_USAGE':    ['GPU Core Load', 'GPU Usage', 'GPU Load'],
-                    'VRAM_USAGE':   ['GPU Memory Usage', 'GPU Memory Load'],
-                    'RAM_USAGE':    ['Physical Memory Load'],
-                    'RAM_USED_GB':  ['Physical Memory Used'],
-                    'RAM_TOTAL':    ['Physical Memory Total'],
-                    'RAM_FREE_GB':  ['Physical Memory Available'],
-                    'DISK_READ':    ['Read Rate', 'Disk Read Rate'],
-                    'DISK_WRITE':   ['Write Rate', 'Disk Write Rate'],
-                    'NET_DOWN':     ['Current DL rate', 'Download rate'],
-                    'NET_UP':       ['Current UP rate', 'Upload rate'],
-                    # FRAMERATE intentionally not auto-mapped — see note above
-                }
-                auto_map = {}
-                for key, candidates in KEY_NAMES.items():
-                    for cname in candidates:
-                        if cname in name_to_idx:
-                            auto_map[key] = name_to_idx[cname]
-                            break
-                if auto_map:
-                    cfg['sensor_map'].update(auto_map)
-                    print(f'Sensor map auto-updated from discovered sensors ({len(auto_map)} keys)')
-            except Exception as e:
-                print(f'Sensor map auto-update error: {e}')
-        elif 'sensorMap' in theme:
-            # Fall back to theme's embedded map only if no discovered sensors file
-            cfg['sensor_map'].update(theme['sensorMap'])
-            print('Sensor map loaded from theme (no discovered sensors file found)')
+        # Standard sensor keys (CPU_USAGE, GPU_TEMP, etc.) need no mapping
+        # step at all -- read_sharedmem() resolves them fresh by NAME on
+        # every single read. Any CUSTOM_N entries in this theme's own
+        # sensorMap are read directly from _current_theme by read_sensors()
+        # when needed, with nothing copied into the global config.
 
         # Extract and register any custom fonts embedded in the theme
         load_custom_fonts_from_theme(theme)

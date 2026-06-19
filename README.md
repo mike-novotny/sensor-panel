@@ -186,7 +186,7 @@ This will:
 3. The app will:
    - Add itself to Windows startup automatically
    - Connect to HWiNFO64 shared memory
-   - **Discover all your sensors** and save them to `%APPDATA%\DS916Tray\ds916sensors.json`
+   - **Discover all your sensors** and save them to `%APPDATA%\DS916Tray\hwinfo_sensors.json`
    - Create a `%APPDATA%\DS916Tray\Themes\` folder for storing your theme files
 
 > **If you've ever used JONSBO-AIO, make sure it's fully closed** (including from the system tray) before running DS916Tray — both cannot use the COM port at the same time. If you've never installed or used JONSBO-AIO, you can skip this.
@@ -194,7 +194,7 @@ This will:
 ### Step 6 — Design a Theme
 
 1. Right-click the DS916 tray icon and choose **🎨 Open Theme Builder** — this opens `theme_builder.html` directly from its installed location in your browser (you no longer need to find the file manually)
-2. When prompted, click **Browse for file…** and navigate to `%APPDATA%\DS916Tray\ds916sensors.json` to load your system's sensor list
+2. When prompted, click **Browse for file…** and navigate to `%APPDATA%\DS916Tray\hwinfo_sensors.json` to load your system's sensor list
 3. Design your theme (see [Theme Builder](#theme-builder) section below)
 4. Click **💾 Save Theme** and save to `%APPDATA%\DS916Tray\Themes\`
 
@@ -251,7 +251,7 @@ You can add multiple image layers. Each behaves like any other element — drag 
 | **⏹ Stop Display** | Stop streaming |
 | **📂 Load Theme…** | Load a `.ds916theme` file |
 | **🎨 Open Theme Builder** | Opens `theme_builder.html` in your browser |
-| **🔍 Discover Sensors** | Re-scan HWiNFO64 and update `ds916sensors.json` |
+| **🔍 Discover Sensors** | Re-scan HWiNFO64 and update `hwinfo_sensors.json` |
 | **ℹ Status…** | Live status: sensor source, COM port, sensor readings |
 | **⚙ Settings…** | COM port, FPS, HWiNFO source, sensor map, auto-restart |
 | **🗑 Uninstall…** | Remove from startup and delete app data |
@@ -317,7 +317,7 @@ To add decorative image layers on top of the background, use **+ Image** instead
 
 ### Loading Your Sensor List
 
-Click **🔍 Sensors** in the top bar to import `ds916sensors.json`. This loads all sensors from your specific hardware into the palette. Without this file, only standard sensor keys are available.
+Click **🔍 Sensors** in the top bar to import `hwinfo_sensors.json`. This loads all sensors from your specific hardware into the palette. Without this file, only standard sensor keys are available.
 
 The sensor list is generated automatically by the tray app on every startup. If the file doesn't exist yet, run DS916Tray.exe first.
 
@@ -340,7 +340,7 @@ The sensor list is generated automatically by the tray app on every startup. If 
 
 ### Sensor Palette
 
-The palette shows a curated default set of sensors. Use the **＋ Sensors** button to open the full picker with checkboxes — select any sensor to add it to the palette. Importing a `ds916sensors.json` file adds your hardware-specific sensors (custom fans, liquid cooling temps, per-core data, etc.) to the picker.
+The palette shows a curated default set of sensors. Use the **＋ Sensors** button to open the full picker with checkboxes — select any sensor to add it to the palette. Importing a `hwinfo_sensors.json` file adds your hardware-specific sensors (custom fans, liquid cooling temps, per-core data, etc.) to the picker.
 
 ### Resizing Elements
 
@@ -396,7 +396,7 @@ From there, treat it like any other theme: drag elements to fine-tune positions,
 When the tray app starts with HWiNFO64 shared memory enabled, it automatically scans all available sensors and saves them to:
 
 ```
-%APPDATA%\DS916Tray\ds916sensors.json
+%APPDATA%\DS916Tray\hwinfo_sensors.json
 ```
 
 This file contains every sensor HWiNFO64 exposes, including hardware-specific sensors like additional fan headers, liquid cooling temperatures, per-core data, and framerate metrics.

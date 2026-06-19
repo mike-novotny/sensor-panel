@@ -6,6 +6,21 @@ Versions follow [Semantic Versioning](https://semver.org/) loosely: **MAJOR** fo
 
 ## [Unreleased]
 
+## [1.3.1] — Sensor Reading Reliability Fix
+
+### Fixed
+- **Stale sensor index bug.** `config.json` cached numeric HWiNFO shared-memory indices for standard sensor keys (`CPU_USAGE`, `GPU_TEMP`, etc.), persisted indefinitely across sessions. A per-theme-load auto-correction pass tried to refresh these by name, but any key that failed to match a hardcoded name candidate silently kept its old, potentially wrong index forever — with no visibility into the failure. This caused a real-world case of every sensor reading as 0 after HWiNFO's sensor count/ordering shifted between sessions; the only previous workaround was manually deleting `config.json`.
+- `read_sharedmem()` now resolves every standard sensor key fresh **by name**, on every single read, with nothing cached across sessions — the same pattern the RTSS reader already used successfully for matching process names. Nothing can go stale because nothing is persisted.
+- Removed a chunk of dead, unreachable orphaned code (a leftover fragment of the old `read_registry` function from the 1.2.0 registry-mode removal, with no `def` line of its own).
+
+### Changed
+- `config.json` no longer stores a `sensor_map` at all; `load_cfg()` actively strips any leftover `sensor_map` from an older config file to prevent this class of bug from resurfacing.
+- `CUSTOM_N` (manually-wired, non-standard) sensors now resolve their index from the currently loaded theme's own embedded `sensorMap`, rather than a separate persisted global config.
+- Renamed `ds916sensors.json` to `hwinfo_sensors.json` — it's general HWiNFO system sensor data, not specific to the DS916 device itself. Updated throughout code, README, and wiki.
+
+### Added
+- `diagnose_hwinfo.py` — a standalone diagnostic script for inspecting HWiNFO shared memory directly (live sensor scan by name, plus a saved-sensor-map staleness check), independent of the main tray app.
+
 ## [1.3.0] — Installation & Organization Overhaul
 `a7d0c2b` (HEAD)
 

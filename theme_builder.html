@@ -1330,11 +1330,11 @@ function loadFontFile(){
 }
 
 // ── SENSOR FILE IMPORT ────────────────────────────────────────────────────────
-// ds916sensors.json → %APPDATA%\DS916Tray\ds916sensors.json
+// hwinfo_sensors.json → %APPDATA%\DS916Tray\hwinfo_sensors.json
 // Themes              → %APPDATA%\DS916Tray\Themes\
 
 const APPDATA_PATH = '%APPDATA%\\DS916Tray';
-const SENSORS_PATH = APPDATA_PATH + '\\ds916sensors.json';
+const SENSORS_PATH = APPDATA_PATH + '\\hwinfo_sensors.json';
 const THEMES_PATH  = APPDATA_PATH + '\\Themes';
 
 let discoveredSensors = [];
@@ -1441,7 +1441,7 @@ async function importSensorList(){
     try{
       const [fh]=await window.showOpenFilePicker({
         id:'ds916sensors',
-        suggestedName:'ds916sensors.json',
+        suggestedName:'hwinfo_sensors.json',
         types:[{description:'DS916 Sensor File',accept:{'application/json':['.json']}}],
       });
       const text=await (await fh.getFile()).text();
@@ -1549,7 +1549,7 @@ function promptSensorImport(){
     <p style="font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.6">
       Import your system's sensor list so the palette shows all your hardware sensors.<br><br>
       <b style="color:var(--accent)">The file is at:</b><br>
-      <code style="color:var(--text);background:var(--panel2);padding:3px 6px;border-radius:3px;display:inline-block;margin:4px 0">%APPDATA%\DS916Tray\ds916sensors.json</code><br><br>
+      <code style="color:var(--text);background:var(--panel2);padding:3px 6px;border-radius:3px;display:inline-block;margin:4px 0">%APPDATA%\DS916Tray\hwinfo_sensors.json</code><br><br>
       If the file doesn't exist yet, run the DS916 tray app first — it generates the file automatically on startup.
     </p>
     <div class="mbtns">
