@@ -276,11 +276,12 @@ Open via tray icon → **⚙ Settings…**
 
 ### HWiNFO Tab
 
-Configures the **11.5-hour auto-restart workaround** for HWiNFO64 free edition's shared memory time limit:
+Configures the optional **11.5-hour auto-restart** for HWiNFO64 free edition's shared memory time limit:
 
-1. Click **Detect** to find `HWiNFO64.exe` automatically
-2. Click **Install Restart Task** — Windows will show a **UAC prompt**; click Yes to allow it. The tray app itself never needs to run as Administrator, only this one-time task registration step does.
-3. Status shows whether the task is currently installed
+1. Click **Detect** to find `HWiNFO64.exe` automatically (needed so the app knows what to relaunch)
+2. Check **"Automatically restart HWiNFO64 before the 12-hour limit"** — **off by default**, since it restarts HWiNFO64 without asking each time. Leave it off if you have HWiNFO Pro (no 12-hour limit) or prefer to restart HWiNFO64 yourself
+3. When enabled, the tray app checks HWiNFO64's actual uptime every 30 minutes and restarts it once it's been running 11.5 hours — no Windows Scheduled Task, no UAC prompt, since restarting an application you already have access to isn't an elevated action
+4. Status shows current HWiNFO64 uptime and time until the next auto-restart
 
 ### RTSS (FPS) Tab
 
@@ -434,16 +435,24 @@ RTSS is fully optional — if it isn't installed or running, the framerate senso
 
 ---
 
+## Sensor Update Speed
+
+HWiNFO64 only refreshes sensor values as fast as its own **Polling Period** setting allows (2000ms / 2 seconds by default). If fast-changing sensors like CPU/GPU usage feel sluggish or "jumpy" on the panel — especially on bar/ring elements, which redraw instantly with no smoothing — this is almost always HWiNFO's polling rate, not anything fixable in this project. Lowering it in HWiNFO64's settings (gear icon → General Settings → Polling Period) to somewhere in the 500-1000ms range is a commonly used middle ground for a snappier feel, at a small CPU cost to HWiNFO itself. See the [HWiNFO Setup wiki page](https://github.com/mike-novotny/sensor-panel/wiki/HWiNFO-Setup#sensor-update-speed-polling-period) for the full breakdown and caveats.
+
+---
+
 ## HWiNFO64 Shared Memory — 12-Hour Limit
 
 HWiNFO64 free edition disables shared memory after 12 hours of continuous operation. When this happens, sensor values will stop updating until HWiNFO64 is restarted.
 
 **Solutions:**
 
-1. **Auto-restart task** (recommended) — Settings → HWiNFO tab → Install Restart Task. Creates a Windows Scheduled Task that silently restarts HWiNFO64 every 11.5 hours with no window appearing
+1. **Auto-restart** (optional, off by default) — Settings → HWiNFO tab → check "Automatically restart HWiNFO64 before the 12-hour limit." The tray app checks HWiNFO64's real uptime every 30 minutes and restarts it once it's been running 11.5 hours, with no Scheduled Task and no UAC prompt involved
 2. **Manual restart** — restart HWiNFO64 manually when needed; the tray app will automatically reconnect to the fresh shared memory session within a moment
 
-Check the current source at any time via tray icon → **ℹ Status…**
+This is off by default since it restarts HWiNFO64 without asking each time — leave it off if you'd rather restart manually, or if you have HWiNFO Pro and the limit doesn't apply to you anyway.
+
+Check the current status at any time via tray icon → **ℹ Status…**
 
 > **Please consider supporting HWiNFO64.** This entire project depends on HWiNFO's excellent and freely available sensor monitoring engine — without it, none of this would be possible. A [HWiNFO Pro license](https://www.hwinfo.com/buy/) removes the 12-hour shared memory limit entirely (making the restart workaround unnecessary), adds remote monitoring, and supports continued development of a tool the whole PC hardware community relies on. It's inexpensive and a fair trade for the years of free, high-quality work that's gone into it.
 
@@ -454,11 +463,27 @@ Check the current source at any time via tray icon → **ℹ Status…**
 Right-click tray icon → **ℹ Status…** to see a live dashboard:
 
 - **Display** — streaming status, COM port, FPS, active theme name and resolution
-- **HWiNFO64 Sensor Source** — shows `Shared Memory ✅` or an unavailable warning if HWiNFO64 isn't running, plus whether the auto-restart task is installed
+- **HWiNFO64 Sensor Source** — shows `Shared Memory ✅` or an unavailable warning if HWiNFO64 isn't running, plus current HWiNFO64 uptime and auto-restart status
 - **Live Sensor Snapshot** — current values for CPU/GPU usage and temperature, motherboard temp, CPU fan
 - **System** — Windows startup status
 
 The window auto-sizes to its content (capped at 90% of your screen height) and has a **↻ Refresh** button to re-read all values.
+
+---
+
+## Logging
+
+The tray app writes a log file to:
+```
+%APPDATA%\DS916Tray\ds916tray.log
+```
+
+Configurable in **Settings → General → Logging**:
+- **Off** — nothing is written at all
+- **Normal** (default) — startup, theme loads, connection status, settings changes, and errors — useful detail for troubleshooting without being noisy
+- **Verbose** — adds per-frame and per-sensor-read diagnostics, for actively chasing down a specific problem
+
+The log file is automatically capped at roughly 1MB (with one rotated backup kept), so it can never grow unbounded no matter how long the app has been running. Use **📁 Open Log Folder** in Settings for quick access, especially useful when reporting an issue.
 
 ---
 

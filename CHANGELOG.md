@@ -6,6 +6,26 @@ Versions follow [Semantic Versioning](https://semver.org/) loosely: **MAJOR** fo
 
 ## [Unreleased]
 
+## [1.4.0] — Logging System & HWiNFO Auto-Restart Redesign
+
+### Added
+- **Logging system.** All console output migrated from bare `print()` calls to Python's `logging` module, written to `%APPDATA%\DS916Tray\ds916tray.log`. Three configurable levels in **Settings → General → Logging**: `Off`, `Normal` (default — startup, theme loads, connection status, settings changes, errors), and `Verbose` (adds per-frame/per-sensor-read diagnostics for active troubleshooting). Log file is capped at ~1MB via `RotatingFileHandler` with one backup kept, so it can never grow unbounded. Added **📁 Open Log Folder** button for quick access.
+- Settings changes are now explicitly logged (`Setting changed: key = old -> new`), including a guaranteed final log line when logging itself is switched off, so there's always a record of why logging stopped.
+
+### Changed
+- **HWiNFO auto-restart redesigned from the ground up.** The previous Windows Scheduled Task approach (added in 1.3.0, debugged extensively in 1.3.0–1.3.1) is removed entirely, replaced with an in-app periodic check: the tray app checks HWiNFO64's real process uptime every 30 minutes and restarts it once it's been running 11.5 hours. This requires **no Scheduled Task, no XML generation, and no UAC/elevation prompt at all** — restarting an ordinary application you already have permission to interact with is not an elevated action, unlike registering a Scheduled Task, which is why the old approach needed elevation in the first place. This also makes the restart timing immune to the power-cycle drift problem the old fixed-schedule approach had: there's no schedule to drift from, since the check re-evaluates real uptime live every time it runs.
+- **Auto-restart is off by default**, and surfaced as an explicit opt-in checkbox in Settings → HWiNFO — restarting someone's HWiNFO64 without ever asking is presumptuous, and HWiNFO Pro license holders have no 12-hour limit at all, so defaulting to "on" would restart their app needlessly.
+- Settings → HWiNFO tab simplified accordingly: no more Install/Remove Task buttons; replaced with the auto-restart checkbox and a live status line showing HWiNFO64's current uptime and time until the next restart (if enabled).
+- Status window's HWiNFO section updated to reflect the new mechanism instead of querying the now-removed scheduled task.
+
+### Removed
+- All Scheduled-Task-related code: XML generation, `ShellExecuteW`/`runas` UAC handling, `schtasks` queries for install/remove/status.
+
+### Documentation
+- Added a Logging section (README and wiki's Tray App Settings page) documenting the new log levels, file location, rotation behavior, and the Open Log Folder button.
+- Rewrote all HWiNFO auto-restart documentation (README, HWiNFO Setup wiki page, Tray App Settings wiki page, Troubleshooting wiki page) for the new opt-in, no-elevation mechanism, including cleanup instructions for anyone with a leftover `DS916_HWiNFO_Restart` scheduled task from a previous version.
+- Added guidance on HWiNFO64's Polling Period setting (README and wiki's HWiNFO Setup page) — explains that sensor "jumpiness" on bar/ring elements is almost always caused by HWiNFO's own update rate (2000ms default), not anything in this project, and documents the commonly-used 500-1000ms range for a snappier feel along with real caveats (slow individual sensors can drag the effective rate below the configured value; per-sensor polling control only exists for S.M.A.R.T. and Embedded Controller sensors).
+
 ## [1.3.1] — Sensor Reading Reliability Fix
 
 ### Fixed

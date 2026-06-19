@@ -3,7 +3,8 @@ DS916 Tray Renderer
 Runs in the Windows system tray, streams themes to the DS916 screen.
 Compile with: pyinstaller --onefile --windowed --icon=icon.ico --name=DS916Tray ds916_tray.py
 """
-import sys, os, json, struct, time, io, threading, winreg, ctypes
+import sys, os, json, struct, time, io, threading, winreg, ctypes, logging
+from logging.handlers import RotatingFileHandler
 import tkinter as tk
 from tkinter import ttk, filedialog, messagebox, colorchooser
 from datetime import datetime
@@ -19,8 +20,44 @@ APP_NAME    = 'DS916Tray'
 CONFIG_DIR  = os.path.join(os.environ.get('APPDATA',''), APP_NAME)
 THEMES_DIR  = os.path.join(CONFIG_DIR, 'Themes')
 CONFIG_FILE = os.path.join(CONFIG_DIR, 'config.json')
+LOG_FILE    = os.path.join(CONFIG_DIR, 'ds916tray.log')
 os.makedirs(CONFIG_DIR, exist_ok=True)
 os.makedirs(THEMES_DIR, exist_ok=True)
+
+# ── Logging ──────────────────────────────────────────────────────────────────
+# Three levels, configurable in Settings -> General:
+#   Off     - logging.CRITICAL+1 (nothing written at all, not even errors)
+#   Normal  - INFO and above (startup, theme loads, connection status,
+#             restarts, config changes -- the kind of thing you'd want in a
+#             support request, without being noisy)
+#   Verbose - DEBUG and above (every sensor read attempt, per-frame timing,
+#             RTSS scan details -- for actively diagnosing a problem)
+#
+# RotatingFileHandler caps file size so logs can never grow unbounded: once
+# ds916tray.log hits ~1MB it's rotated to ds916tray.log.1 (one backup kept),
+# so total on-disk log size is bounded to roughly 2MB no matter how long the
+# app has been running.
+LOG_LEVEL_MAP = {'off': logging.CRITICAL + 1, 'normal': logging.INFO, 'verbose': logging.DEBUG}
+
+log = logging.getLogger('ds916tray')
+log.setLevel(logging.DEBUG)  # handlers below do the actual filtering
+
+_file_handler = RotatingFileHandler(LOG_FILE, maxBytes=1_000_000, backupCount=1, encoding='utf-8')
+_file_handler.setFormatter(logging.Formatter('%(asctime)s [%(levelname)s] %(message)s', datefmt='%Y-%m-%d %H:%M:%S'))
+log.addHandler(_file_handler)
+
+# Also mirror to stdout when running from a console (python ds916_tray.py
+# directly) -- harmless no-op when run as the windowed .exe with no console.
+_console_handler = logging.StreamHandler(sys.stdout)
+_console_handler.setFormatter(logging.Formatter('%(message)s'))
+log.addHandler(_console_handler)
+
+def set_log_level(level_name):
+    """level_name: 'off', 'normal', or 'verbose'. Applied to both handlers
+    so the file and console always show the same configured verbosity."""
+    lvl = LOG_LEVEL_MAP.get(level_name, logging.INFO)
+    _file_handler.setLevel(lvl)
+    _console_handler.setLevel(lvl)
 
 # ── Default config ────────────────────────────────────────────────────────────
 DEFAULT_CFG = {
@@ -30,6 +67,8 @@ DEFAULT_CFG = {
     'autostart':  True,
     'hwinfo_path': '',
     'rtss_process': '',              # empty = auto-detect active 3D app; or an exact exe name (e.g. "game.exe") to pin a specific process
+    'log_level': 'normal',           # 'off', 'normal', or 'verbose' -- see Logging section above
+    'hwinfo_auto_restart': False,    # opt-in: if True, periodically check HWiNFO64's uptime and restart it before the 12h shared-memory limit -- see check_hwinfo_restart_needed(). Off by default so we never restart HWiNFO64 without explicit permission, and so Pro license holders (no 12h limit) aren't restarted needlessly.
     # Note: there is no persisted sensor index map here. Standard sensor
     # keys (CPU_USAGE, GPU_TEMP, etc.) are resolved fresh by NAME on every
     # single read inside read_sharedmem() -- nothing is ever cached across
@@ -57,6 +96,9 @@ def save_cfg(cfg):
     with open(CONFIG_FILE,'w') as f: json.dump(cfg,f,indent=2)
 
 cfg = load_cfg()
+set_log_level(cfg.get('log_level', 'normal'))
+log.info('=' * 60)
+log.info(f'DS916 Tray starting (log level: {cfg.get("log_level", "normal")})')
 
 # ── DS916 Protocol ────────────────────────────────────────────────────────────
 HEADER_TPL = bytearray([
@@ -90,7 +132,7 @@ _shm_data   = None
 def try_open_sharedmem():
     """Try to open HWiNFO shared memory using pure ctypes."""
     global _shm_handle, _shm_data
-    print('Attempting to open HWiNFO shared memory...')
+    log.debug('Attempting to open HWiNFO shared memory...')
     try:
         import ctypes
 
@@ -109,7 +151,7 @@ def try_open_sharedmem():
             h = kernel32.OpenFileMappingW(FILE_MAP_READ, False, name)
             if h:
                 win_handle = h
-                print(f'  Opened mapping: "{name}" handle={h}')
+                log.debug(f'  Opened mapping: "{name}" handle={h}')
                 break
 
         if not win_handle:
@@ -124,13 +166,13 @@ def try_open_sharedmem():
         if not ptr:
             kernel32.CloseHandle(win_handle)
             raise OSError(f'MapViewOfFile failed (error {kernel32.GetLastError()})')
-        print(f'  MapViewOfFile ptr=0x{ptr:X}')
+        log.debug(f'  MapViewOfFile ptr=0x{ptr:X}')
 
         # Read using ctypes.string_at — this is the correct way to read
         # from a raw memory address in Python on Windows
         sig_bytes = ctypes.string_at(ptr, 4)
         sig = struct.unpack('<I', sig_bytes)[0]
-        print(f'  Signature: 0x{sig:08X} (WIFH=0x57494648, SiWH=0x53695748)')
+        log.debug(f'  Signature: 0x{sig:08X} (WIFH=0x57494648, SiWH=0x53695748)')
 
         VALID_SIGS = {0x57494648, 0x53695748}
         if sig not in VALID_SIGS:
@@ -144,15 +186,15 @@ def try_open_sharedmem():
         off_e = struct.unpack_from('<I', hdr, 0x20)[0]
         sz_e  = struct.unpack_from('<I', hdr, 0x24)[0]
         n_e   = struct.unpack_from('<I', hdr, 0x28)[0]
-        print(f'  Entries: {n_e} @ offset {off_e}, {sz_e} bytes each')
+        log.debug(f'  Entries: {n_e} @ offset {off_e}, {sz_e} bytes each')
         # Store 7-tuple: kernel32, win_handle, ptr, SM_SIZE, off_e, sz_e, n_e
         _shm_handle = (kernel32, win_handle, ptr, SM_SIZE, off_e, sz_e, n_e)
         _shm_data   = True
-        print('  Shared memory OK ✅')
+        log.info('HWiNFO shared memory connected OK')
         return True
 
     except Exception as e:
-        print(f'  Shared memory failed: {e}')
+        log.warning(f'HWiNFO shared memory open failed: {e}')
         _shm_handle = None
         _shm_data   = None
         return False
@@ -237,7 +279,7 @@ def read_sharedmem(sensor_map=None):
         sig_bytes = ctypes.string_at(ptr, 4)
         sig = struct.unpack('<I', sig_bytes)[0]
         if sig not in VALID_SIGS:
-            print('HWiNFO shared memory signature is now invalid (stale handle after a restart) - reconnecting next read', flush=True)
+            log.info('HWiNFO shared memory signature is now invalid (stale handle after a restart) - reconnecting next read')
             try:
                 kernel32.UnmapViewOfFile(ptr)
                 kernel32.CloseHandle(win_handle)
@@ -281,7 +323,7 @@ def read_sharedmem(sensor_map=None):
                 data[skey] = struct.unpack('<d', val_bytes)[0]
 
     except Exception as e:
-        print(f'Shared memory read error: {e}')
+        log.error(f'Shared memory read error: {e}')
         # Any unexpected failure also resets the handle, rather than
         # leaving a possibly-broken mapping in place indefinitely.
         _shm_handle = None
@@ -295,7 +337,7 @@ def discover_sensors():
     the theme builder's + Sensors picker as static label elements.
     Called automatically on startup and available from tray menu."""
     if not _shm_handle:
-        print('Cannot discover sensors — shared memory not available')
+        log.warning('Cannot discover sensors - shared memory not available')
         return False
     try:
         import ctypes
@@ -347,10 +389,10 @@ def discover_sensors():
         os.makedirs(CONFIG_DIR, exist_ok=True)
         with open(sensors_path, 'w', encoding='utf-8') as f:
             json.dump(out, f, indent=2)
-        print(f'Sensor discovery: {len(sensors)} sensors, {len(device_names)} device groups saved to {sensors_path}')
+        log.info(f'Sensor discovery: {len(sensors)} sensors, {len(device_names)} device groups saved to {sensors_path}')
         return sensors_path
     except Exception as e:
-        print(f'Sensor discovery error: {e}')
+        log.error(f'Sensor discovery error: {e}')
         return False
 
 def read_sensors():
@@ -436,9 +478,9 @@ def try_open_rtss():
                     break
                 last_err = kernel32.GetLastError()
                 try:
-                    print('  RTSS MapViewOfFile failed (error %s) on "%s" with access=0x%X - trying next combination' % (last_err, name, access), flush=True)
+                    log.debug('  RTSS MapViewOfFile failed (error %s) on "%s" with access=0x%X - trying next combination' % (last_err, name, access))
                 except Exception as log_err:
-                    print('  RTSS MapViewOfFile failed, and logging itself raised: %r' % (log_err,), flush=True)
+                    log.debug('  RTSS MapViewOfFile failed, and logging itself raised: %r' % (log_err,))
                 kernel32.CloseHandle(h)
             if ptr:
                 break
@@ -448,11 +490,11 @@ def try_open_rtss():
             # is an optional feature. Log once, not every frame.
             if not _rtss_unavailable_logged:
                 if last_err is not None:
-                    print('RTSS shared memory could not be mapped (last error %s) - '
+                    log.info('RTSS shared memory could not be mapped (last error %s) - '
                           'this is optional, FPS sensor will be unavailable. Make sure '
                           'RTSS (RivaTuner Statistics Server) is installed and running.' % (last_err,), flush=True)
                 else:
-                    print('RTSS shared memory not found (RTSS not running - this is '
+                    log.info('RTSS shared memory not found (RTSS not running - this is '
                           'optional, FPS sensor will be unavailable)', flush=True)
                 _rtss_unavailable_logged = True
             _rtss_handle = None
@@ -463,7 +505,7 @@ def try_open_rtss():
         # 'RTSS' as a little-endian DWORD per the SDK header
         RTSS_SIG = struct.unpack('<I', b'SSTR')[0]  # confirmed via live testing: RTSS writes the signature bytes in this order in memory
         if sig != RTSS_SIG:
-            print('  RTSS signature mismatch: got 0x%08X, expected 0x%08X (0xDEAD means RTSS is shutting down)' % (sig, RTSS_SIG), flush=True)
+            log.debug('  RTSS signature mismatch: got 0x%08X, expected 0x%08X (0xDEAD means RTSS is shutting down)' % (sig, RTSS_SIG))
             kernel32.UnmapViewOfFile(ptr)
             kernel32.CloseHandle(win_handle)
             _rtss_handle = None
@@ -472,7 +514,7 @@ def try_open_rtss():
         version = struct.unpack_from('<I', ctypes.string_at(ptr+4, 4))[0]
         if version < 0x00020000:
             # Older v1.x struct doesn't have per-app entries we need
-            print('  RTSS version 0x%08X is older than v2.0 - per-app data unavailable' % (version,), flush=True)
+            log.warning('  RTSS version 0x%08X is older than v2.0 - per-app data unavailable' % (version,))
             kernel32.UnmapViewOfFile(ptr)
             kernel32.CloseHandle(win_handle)
             _rtss_handle = None
@@ -480,12 +522,12 @@ def try_open_rtss():
 
         _rtss_handle = (kernel32, win_handle, ptr, None)
         _rtss_unavailable_logged = False
-        print('RTSS shared memory connected OK (mapping="%s", version=0x%08X)' % (opened_name, version), flush=True)
+        log.info('RTSS shared memory connected OK (mapping="%s", version=0x%08X)' % (opened_name, version))
         return True
 
     except Exception as e:
         if not _rtss_unavailable_logged:
-            print('RTSS shared memory unavailable: %r' % (e,), flush=True)
+            log.debug('RTSS shared memory unavailable: %r' % (e,))
             _rtss_unavailable_logged = True
         _rtss_handle = None
         return False
@@ -562,7 +604,7 @@ def list_rtss_apps():
             apps.append((pid, name, round(fps, 1)))
 
     except Exception as e:
-        print('RTSS app list error: %r' % (e,), flush=True)
+        log.error('RTSS app list error: %r' % (e,))
     return apps
 
 
@@ -665,7 +707,7 @@ def read_rtss_framerate():
         return _build_rtss_result(best_entry_ptr, app_entry_size, best_fps, ctypes)
 
     except Exception as e:
-        print('RTSS read error: %r' % (e,), flush=True)
+        log.debug('RTSS read error: %r' % (e,))
         return None
 
 def _build_rtss_result(entry_ptr, app_entry_size, fps, ctypes):
@@ -761,7 +803,7 @@ def get_font(family='Consolas', size=32, bold=False):
         try:
             font = ImageFont.truetype(_custom_font_files[family], size)
         except Exception as e:
-            print(f'Custom font load error ({family}): {e}')
+            log.warning(f'Custom font load error ({family}): {e}')
 
     # 2. Search Windows Fonts
     if not font:
@@ -770,7 +812,7 @@ def get_font(family='Consolas', size=32, bold=False):
             try:
                 font = ImageFont.truetype(path, size)
             except Exception as e:
-                print(f'Font load error ({path}): {e}')
+                log.warning(f'Font load error ({path}): {e}')
 
     # 3. Fallback to Consolas
     if not font:
@@ -804,9 +846,9 @@ def load_custom_fonts_from_theme(theme):
             # Clear cache entries for this family so they get reloaded
             for k in list(_font_cache.keys()):
                 if k[0] == family: del _font_cache[k]
-            print(f'Custom font extracted: "{family}" -> {tmp.name}')
+            log.debug(f'Custom font extracted: "{family}" -> {tmp.name}')
         except Exception as e:
-            print(f'Custom font extract error ({family}): {e}')
+            log.warning(f'Custom font extract error ({family}): {e}')
 
 # ── Colour helpers ────────────────────────────────────────────────────────────
 def parse_color(c):
@@ -850,7 +892,7 @@ def render_frame(theme, sensors):
             resized = bg_pil.resize((W, H), Image.LANCZOS).convert('RGB')
             img.paste(resized, (0, 0))
         except Exception as e:
-            print(f'Background image error: {e}')
+            log.warning(f'Background image error: {e}')
 
     draw = ImageDraw.Draw(img, 'RGBA')
     now = datetime.now()
@@ -1148,7 +1190,7 @@ def load_theme(path):
             if bg_data_url and isinstance(bg_data_url, str) and ',' in bg_data_url:
                 header, b64 = bg_data_url.split(',', 1)
                 if 'svg' in header.lower():
-                    print('Background image is SVG format, which Pillow cannot decode — '
+                    log.warning('Background image is SVG format, which Pillow cannot decode - '
                           'this theme was likely generated by an older version of the AI '
                           'Theme Generator. Re-generate and re-save the theme in the theme '
                           'builder to fix (newer versions export a PNG background instead).')
@@ -1156,9 +1198,9 @@ def load_theme(path):
                     try:
                         img_bytes = base64.b64decode(b64)
                         theme['_background_image'] = PILImage.open(io.BytesIO(img_bytes)).convert('RGBA')
-                        print(f'Background image loaded from embedded data ({len(img_bytes)//1024}KB)')
+                        log.info(f'Background image loaded from embedded data ({len(img_bytes)//1024}KB)')
                     except Exception as e:
-                        print(f'Background image decode error: {e}')
+                        log.warning(f'Background image decode error: {e}')
             # Image layers are also embedded as data URLs
             for el in theme.get('elements', []):
                 if el.get('type') == 'image' and el.get('data'):
@@ -1169,7 +1211,7 @@ def load_theme(path):
                             img_bytes = base64.b64decode(b64)
                             el['_pil_image'] = PILImage.open(io.BytesIO(img_bytes)).convert('RGBA')
                     except Exception as e:
-                        print(f'Image layer decode error: {e}')
+                        log.warning(f'Image layer decode error: {e}')
         else:
             return False
 
@@ -1186,10 +1228,10 @@ def load_theme(path):
         _current_theme_path = path
         cfg['theme_path'] = path
         save_cfg(cfg)
-        print(f'Theme loaded: {theme.get("name","?")}')
+        log.info(f'Theme loaded: {theme.get("name","?")}')
         return True
     except Exception as e:
-        print(f'Theme load error: {e}')
+        log.error(f'Theme load error: {e}')
         return False
 
 # ── Serial / streaming ────────────────────────────────────────────────────────
@@ -1204,15 +1246,15 @@ def detect_ds916_port():
         for port in serial.tools.list_ports.comports():
             # pyserial exposes VID/PID on the port info
             if port.vid == 0x33C3 and port.pid == 0xF101:
-                print(f'DS916 auto-detected on {port.device} (VID=33C3 PID=F101)')
+                log.info(f'DS916 auto-detected on {port.device} (VID=33C3 PID=F101)')
                 return port.device
             # Also check the hardware ID string as fallback
             hwid = (port.hwid or '').upper()
             if 'VID_33C3' in hwid and 'PID_F101' in hwid:
-                print(f'DS916 auto-detected on {port.device} via HWID match')
+                log.info(f'DS916 auto-detected on {port.device} via HWID match')
                 return port.device
     except Exception as e:
-        print(f'Port detection error: {e}')
+        log.error(f'Port detection error: {e}')
     return None
 
 def open_port():
@@ -1222,15 +1264,15 @@ def open_port():
         # Auto-detect DS916 port; fall back to config value
         detected = detect_ds916_port()
         if detected and detected != cfg['com_port']:
-            print(f'Updating COM port: {cfg["com_port"]} → {detected}')
+            log.info(f'Updating COM port: {cfg["com_port"]} -> {detected}')
             cfg['com_port'] = detected
             save_cfg(cfg)
         port_to_use = cfg['com_port']
         _port = serial.Serial(port_to_use, baudrate=115200, timeout=2)
-        print(f'Opened {port_to_use}')
+        log.info(f'Opened {port_to_use}')
         return True
     except Exception as e:
-        print(f'Port error: {e}')
+        log.error(f'Port error: {e}')
         return False
 
 def stream_loop():
@@ -1242,6 +1284,7 @@ def stream_loop():
         try:
             if _current_theme is None:
                 time.sleep(0.5); continue
+            check_hwinfo_restart_needed()  # internally gated to ~every 30 min, cheap no-op otherwise
             sensors = read_sensors()
             img     = render_frame(_current_theme, sensors)
             buf = io.BytesIO()
@@ -1253,7 +1296,7 @@ def stream_loop():
                 _port.flush()
             frame_count += 1
         except Exception as e:
-            print(f'Stream error: {e}')
+            log.error(f'Stream error: {e}')
             time.sleep(1)
         elapsed = time.time()-t0
         if elapsed < interval:
@@ -1267,7 +1310,7 @@ def start_display():
     _run_thread = threading.Thread(target=stream_loop, daemon=True)
     _run_thread.start()
     update_tray_icon()
-    print('Display started')
+    log.info('Display started')
 
 def stop_display():
     global _running
@@ -1275,7 +1318,105 @@ def stop_display():
     time.sleep(0.3)
     if _port and _port.is_open: _port.close()
     update_tray_icon()
-    print('Display stopped')
+    log.info('Display stopped')
+
+# ── HWiNFO Auto-Restart (replaces the old Scheduled Task approach) ────────────
+def get_hwinfo_start_time():
+    """Return the datetime HWiNFO64.exe actually started, or None if it
+    isn't currently running / detection fails. Used both to decide whether
+    a restart is due, and purely informationally in Settings/Status."""
+    try:
+        import ctypes
+        from ctypes import wintypes
+        from datetime import timedelta
+        psapi = ctypes.windll.psapi
+        kernel32 = ctypes.windll.kernel32
+        pids = (wintypes.DWORD * 1024)()
+        cb_needed = wintypes.DWORD()
+        psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(cb_needed))
+        count = cb_needed.value // ctypes.sizeof(wintypes.DWORD)
+        PROCESS_QUERY_INFORMATION = 0x0400
+        for i in range(count):
+            pid = pids[i]
+            if not pid: continue
+            hproc = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid)
+            if not hproc: continue
+            try:
+                name_buf = ctypes.create_unicode_buffer(260)
+                size = wintypes.DWORD(260)
+                if psapi.GetModuleBaseNameW(hproc, None, name_buf, size):
+                    if name_buf.value.lower() == 'hwinfo64.exe':
+                        creation = wintypes.FILETIME()
+                        exit_t = wintypes.FILETIME()
+                        kernel_t = wintypes.FILETIME()
+                        user_t = wintypes.FILETIME()
+                        if kernel32.GetProcessTimes(hproc, ctypes.byref(creation),
+                                ctypes.byref(exit_t), ctypes.byref(kernel_t), ctypes.byref(user_t)):
+                            ft = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
+                            return datetime(1601,1,1) + timedelta(microseconds=ft/10)
+            finally:
+                kernel32.CloseHandle(hproc)
+    except Exception as e:
+        log.warning(f'Could not detect HWiNFO64 start time: {e}')
+    return None
+
+
+_last_hwinfo_restart_check = 0
+HWINFO_RESTART_CHECK_INTERVAL = 30 * 60   # check every 30 minutes
+HWINFO_RESTART_THRESHOLD     = 11.5 * 3600  # restart once HWiNFO64 has run this long (seconds)
+
+def check_hwinfo_restart_needed():
+    """Called periodically from the main loop (every ~30 min, gated by
+    HWINFO_RESTART_CHECK_INTERVAL). If HWiNFO64 has been running for
+    11.5+ hours and the auto-restart setting is enabled, stop and restart
+    it -- a normal user-level action requiring no elevation/UAC prompt,
+    since we're just killing and relaunching an ordinary application we
+    already have permission to interact with (unlike registering a
+    Windows Scheduled Task, which DOES require elevation).
+
+    This replaces the old Scheduled-Task-based approach entirely. A fixed
+    schedule had no way to know about real-world power cycles -- if the
+    PC was shut down and restarted, the task's fixed timing could drift
+    hours out of sync with HWiNFO64's actual uptime. Checking live, on a
+    timer, against HWiNFO64's real current uptime has no such drift,
+    because there's no schedule to drift from in the first place.
+    """
+    global _last_hwinfo_restart_check
+    if not cfg.get('hwinfo_auto_restart', False):
+        return
+    now = time.time()
+    if now - _last_hwinfo_restart_check < HWINFO_RESTART_CHECK_INTERVAL:
+        return
+    _last_hwinfo_restart_check = now
+
+    start = get_hwinfo_start_time()
+    if start is None:
+        log.debug('HWiNFO restart check: HWiNFO64 not currently running, nothing to do')
+        return
+
+    uptime_seconds = (datetime.now() - start).total_seconds()
+    log.debug(f'HWiNFO restart check: HWiNFO64 uptime is {uptime_seconds/3600:.2f}h')
+    if uptime_seconds < HWINFO_RESTART_THRESHOLD:
+        return
+
+    path = cfg.get('hwinfo_path', '').strip()
+    if not path or not os.path.exists(path):
+        log.warning('HWiNFO64 is due for a restart (12h limit approaching) but no HWiNFO64.exe '
+                    'path is configured in Settings -> HWiNFO -- cannot restart automatically. '
+                    'Set the path in Settings to enable this.')
+        return
+
+    log.info(f'HWiNFO64 has been running {uptime_seconds/3600:.2f}h - restarting now to keep '
+             f'shared memory active before the free-version 12h limit')
+    try:
+        import subprocess
+        subprocess.run(['taskkill', '/IM', 'HWiNFO64.exe', '/F'],
+                       capture_output=True, timeout=10)
+        time.sleep(2)
+        subprocess.Popen([path, '-sensors'])
+        log.info('HWiNFO64 restarted successfully')
+    except Exception as e:
+        log.error(f'HWiNFO64 restart failed: {e}')
 
 # ── Settings Window ───────────────────────────────────────────────────────────
 _settings_win = None
@@ -1359,6 +1500,23 @@ def open_settings():
     ttk.Checkbutton(t1, text='Start display automatically with Windows',
                     variable=auto_var).grid(row=4, column=0, columnspan=3, sticky='w', padx=8, pady=6)
 
+    lbl(t1, 'Logging:', 5)
+    log_level_var = tk.StringVar(value=cfg.get('log_level', 'normal'))
+    log_level_cb = ttk.Combobox(t1, textvariable=log_level_var,
+                                values=['off', 'normal', 'verbose'], width=10, state='readonly')
+    log_level_cb.grid(row=5, column=1, sticky='w', padx=8, pady=4)
+    ttk.Label(t1, text='verbose = detailed per-frame/per-read diagnostics, for troubleshooting',
+              font=('Segoe UI', 8), foreground='#555').grid(
+        row=6, column=0, columnspan=3, sticky='w', padx=8)
+
+    def open_log_folder():
+        try:
+            os.startfile(CONFIG_DIR)
+        except Exception as e:
+            messagebox.showerror('DS916', f'Could not open folder: {e}', parent=win)
+    ttk.Button(t1, text='📁 Open Log Folder', command=open_log_folder).grid(
+        row=7, column=0, columnspan=2, sticky='w', padx=8, pady=(6,4))
+
     # ── Tab 2: HWiNFO ────────────────────────────────────────────────────────
     t3 = ttk.Frame(nb); nb.add(t3, text='  HWiNFO  ')
 
@@ -1368,9 +1526,14 @@ def open_settings():
 
     msg = (
         'HWiNFO64 free edition disables shared memory after 12 hours.\n'
-        'A Windows Scheduled Task can automatically restart HWiNFO64\n'
-        'every 11.5 hours to keep shared memory active indefinitely.\n\n'
-        'The task runs silently in the background — no window appears.'
+        'This app can automatically detect HWiNFO64\'s real uptime\n'
+        'every 30 minutes and restart it once it has been running\n'
+        'for 11.5 hours, keeping shared memory active indefinitely.\n\n'
+        'This runs silently in the background — no window appears,\n'
+        'and it requires no extra permissions, since restarting an\n'
+        'ordinary application you already have access to is not an\n'
+        'elevated action (unlike registering a Windows Scheduled Task,\n'
+        'which is why earlier versions needed a UAC prompt for this).'
     )
     ttk.Label(t3, text=msg, font=('Segoe UI', 9), foreground='#aaa',
               justify='left', wraplength=460).pack(anchor='w', padx=10, pady=4)
@@ -1401,193 +1564,28 @@ def open_settings():
     ttk.Button(hw_frame, text='Detect', command=detect_hwinfo).grid(row=0, column=2, padx=2)
     ttk.Button(hw_frame, text='Browse…', command=browse_hwinfo).grid(row=0, column=3, padx=2)
 
-    def task_exists():
-        import subprocess
-        r = subprocess.run(['schtasks', '/query', '/tn', 'DS916_HWiNFO_Restart'],
-                          capture_output=True)
-        return r.returncode == 0
+    auto_restart_var = tk.BooleanVar(value=cfg.get('hwinfo_auto_restart', False))
+    ttk.Checkbutton(t3, text='Automatically restart HWiNFO64 before the 12-hour limit (off by default)',
+                    variable=auto_restart_var).pack(anchor='w', padx=10, pady=(10,4))
+    ttk.Label(t3, text="Leave this off if you have HWiNFO Pro (no 12-hour limit) or prefer to\n"
+                       "restart HWiNFO64 yourself. When on, this restarts HWiNFO64 without\n"
+                       "asking each time — only enable it if you're comfortable with that.",
+              font=('Segoe UI', 8), foreground='#888', justify='left').pack(anchor='w', padx=10, pady=(0,4))
 
-    def install_task():
-        path = hwinfo_path_var.get().strip()
-        if not path or not os.path.exists(path):
-            messagebox.showerror('DS916', 'Please set the HWiNFO64.exe path first.', parent=win)
+    hwinfo_status_lbl = ttk.Label(t3, text='', font=('Segoe UI', 9))
+    hwinfo_status_lbl.pack(anchor='w', padx=10, pady=(2,8))
+    def refresh_hwinfo_status():
+        start = get_hwinfo_start_time()
+        if start is None:
+            hwinfo_status_lbl.config(text='○ HWiNFO64 is not currently running', foreground='#888')
             return
-        import subprocess
-        from datetime import datetime, timedelta
-
-        # Align the first restart with HWiNFO64's actual process start time,
-        # not the moment Install was clicked — these can differ by hours if
-        # HWiNFO64 was already running for a while before this task gets set
-        # up, which would otherwise leave a real gap where shared memory is
-        # dead before the task ever gets a chance to restart it.
-        hwinfo_start = None
-        try:
-            import ctypes
-            from ctypes import wintypes
-            psapi = ctypes.windll.psapi
-            kernel32 = ctypes.windll.kernel32
-            # Enumerate processes and find HWiNFO64.exe's start time via its PID
-            pids = (wintypes.DWORD * 1024)()
-            cb_needed = wintypes.DWORD()
-            psapi.EnumProcesses(pids, ctypes.sizeof(pids), ctypes.byref(cb_needed))
-            count = cb_needed.value // ctypes.sizeof(wintypes.DWORD)
-            PROCESS_QUERY_INFORMATION = 0x0400
-            for i in range(count):
-                pid = pids[i]
-                if not pid: continue
-                hproc = kernel32.OpenProcess(PROCESS_QUERY_INFORMATION, False, pid)
-                if not hproc: continue
-                try:
-                    name_buf = ctypes.create_unicode_buffer(260)
-                    size = wintypes.DWORD(260)
-                    if psapi.GetModuleBaseNameW(hproc, None, name_buf, size):
-                        if name_buf.value.lower() == 'hwinfo64.exe':
-                            creation = wintypes.FILETIME()
-                            exit_t = wintypes.FILETIME()
-                            kernel_t = wintypes.FILETIME()
-                            user_t = wintypes.FILETIME()
-                            if kernel32.GetProcessTimes(hproc, ctypes.byref(creation),
-                                    ctypes.byref(exit_t), ctypes.byref(kernel_t), ctypes.byref(user_t)):
-                                ft = (creation.dwHighDateTime << 32) | creation.dwLowDateTime
-                                # FILETIME is 100ns intervals since 1601-01-01
-                                hwinfo_start = datetime(1601,1,1) + timedelta(microseconds=ft/10)
-                finally:
-                    kernel32.CloseHandle(hproc)
-                if hwinfo_start: break
-        except Exception as e:
-            print(f'Could not detect HWiNFO64 start time: {e}')
-
-        if hwinfo_start:
-            # First restart at HWiNFO_start + 11.5h. If that moment has
-            # already passed (HWiNFO has been up 11.5h+ already), schedule
-            # the first run very soon instead of waiting a further 11.5h.
-            first_run = hwinfo_start + timedelta(hours=11, minutes=30)
-            if first_run <= datetime.now():
-                first_run = datetime.now() + timedelta(minutes=2)
-            start_dt = first_run.strftime('%Y-%m-%dT%H:%M:%S')
-            print(f'Aligning restart task to HWiNFO64 start time {hwinfo_start} -> first run {first_run}')
-        else:
-            # Couldn't detect HWiNFO64's start time (not running, or detection
-            # failed) — fall back to 11.5h from now as before.
-            start_dt = (datetime.now() + timedelta(hours=11, minutes=30)).strftime('%Y-%m-%dT%H:%M:%S')
-            print('Could not detect HWiNFO64 process start time — using 11.5h from now as fallback')
-
-        # Task: TimeTrigger starting at the aligned time, repeating every 690 minutes indefinitely
-        xml = f'''<?xml version="1.0" encoding="UTF-16"?>
-<Task version="1.2" xmlns="http://schemas.microsoft.com/windows/2004/02/mit/task">
-  <Triggers>
-    <TimeTrigger>
-      <Repetition>
-        <Interval>PT690M</Interval>
-        <StopAtDurationEnd>false</StopAtDurationEnd>
-      </Repetition>
-      <StartBoundary>{start_dt}</StartBoundary>
-      <Enabled>true</Enabled>
-    </TimeTrigger>
-  </Triggers>
-  <Principals>
-    <Principal id="Author">
-      <LogonType>InteractiveToken</LogonType>
-      <RunLevel>HighestAvailable</RunLevel>
-    </Principal>
-  </Principals>
-  <Actions Context="Author">
-    <Exec>
-      <Command>powershell.exe</Command>
-      <Arguments>-WindowStyle Hidden -Command "Stop-Process -Name HWiNFO64 -Force -ErrorAction SilentlyContinue; Start-Sleep 3; Start-Process '{path}' -ArgumentList '-sensors'"</Arguments>
-    </Exec>
-  </Actions>
-  <Settings>
-    <ExecutionTimeLimit>PT5M</ExecutionTimeLimit>
-    <MultipleInstancesPolicy>IgnoreNew</MultipleInstancesPolicy>
-    <DisallowStartIfOnBatteries>false</DisallowStartIfOnBatteries>
-    <StopIfGoingOnBatteries>false</StopIfGoingOnBatteries>
-    <Hidden>false</Hidden>
-    <IdleSettings>
-      <StopOnIdleEnd>false</StopOnIdleEnd>
-      <RestartOnIdle>false</RestartOnIdle>
-    </IdleSettings>
-  </Settings>
-</Task>'''
-        xml_path = os.path.join(os.environ.get('TEMP','C:\\Temp'), 'ds916_hwinfo_task.xml')
-        with open(xml_path, 'w', encoding='utf-16') as f: f.write(xml)
-
-        # schtasks /create requires elevation — use ShellExecuteW with 'runas'
-        # so Windows shows a UAC prompt rather than silently failing with
-        # "Access is denied". We wait for the elevated process to finish,
-        # then check whether the task now exists to determine success.
-        import ctypes
-        args = f'/create /tn DS916_HWiNFO_Restart /xml "{xml_path}" /f'
-        ret = ctypes.windll.shell32.ShellExecuteW(
-            None, 'runas', 'schtasks.exe', args, None, 0)  # SW_HIDE=0
-
-        # ShellExecuteW returns >32 on success (process launched); <=32 is an error
-        # (including 5=access denied if user cancelled UAC, 2=not found, etc.)
-        if ret <= 32:
-            try: os.unlink(xml_path)
-            except Exception: pass
-            if ret == 5:
-                messagebox.showerror('DS916',
-                    'UAC prompt was cancelled.\n\nElevation is required to create a Scheduled Task.',
-                    parent=win)
-            else:
-                messagebox.showerror('DS916',
-                    f'Failed to launch schtasks (ShellExecute error {ret}).',
-                    parent=win)
-            return
-
-        # Wait a moment for the elevated schtasks process to finish, then
-        # verify by checking whether the task now exists
-        import time
-        time.sleep(2)
-        try: os.unlink(xml_path)
-        except Exception: pass
-
-        if task_exists():
-            cfg['hwinfo_path'] = path
-            save_cfg(cfg)
-            messagebox.showinfo('DS916',
-                'Scheduled task created!\n\nHWiNFO64 will restart every 11.5 hours\nto keep shared memory active.', parent=win)
-            update_task_btn()
-        else:
-            messagebox.showerror('DS916',
-                'Task creation may have failed — the task was not found after install.\n'
-                'Try running the tray app as Administrator if the UAC prompt did not appear.',
-                parent=win)
-
-    def remove_task():
-        import ctypes, time
-        ret = ctypes.windll.shell32.ShellExecuteW(
-            None, 'runas', 'schtasks.exe',
-            '/delete /tn DS916_HWiNFO_Restart /f', None, 0)
-        if ret <= 32:
-            if ret != 5:  # 5 = user cancelled UAC, silent is fine
-                messagebox.showerror('DS916',
-                    f'Failed to remove task (ShellExecute error {ret}).', parent=win)
-            return
-        time.sleep(2)
-        if not task_exists():
-            messagebox.showinfo('DS916', 'Scheduled task removed.', parent=win)
-        update_task_btn()
-
-    def update_task_btn():
-        exists = task_exists()
-        install_btn.config(state='disabled' if exists else 'normal')
-        remove_btn.config(state='normal' if exists else 'disabled')
-        status_lbl.config(
-            text='✅ Task installed — HWiNFO64 will restart every 11.5 hours' if exists
-                 else '○ Task not installed',
-            foreground='#4fc87a' if exists else '#888')
-
-    btn_row = ttk.Frame(t3); btn_row.pack(anchor='w', padx=10, pady=8)
-    install_btn = ttk.Button(btn_row, text='Install Restart Task', command=install_task)
-    install_btn.pack(side='left', padx=(0,6))
-    remove_btn = ttk.Button(btn_row, text='Remove Task', command=remove_task)
-    remove_btn.pack(side='left')
-
-    status_lbl = ttk.Label(t3, text='', font=('Segoe UI', 9))
-    status_lbl.pack(anchor='w', padx=10)
-    update_task_btn()
+        uptime_h = (datetime.now() - start).total_seconds() / 3600
+        next_restart_h = max(0, 11.5 - uptime_h)
+        hwinfo_status_lbl.config(
+            text=f'✅ HWiNFO64 running for {uptime_h:.1f}h — next auto-restart in ~{next_restart_h:.1f}h',
+            foreground='#4fc87a')
+    ttk.Button(t3, text='↻ Refresh Status', command=refresh_hwinfo_status).pack(anchor='w', padx=10)
+    refresh_hwinfo_status()
 
     # ── Tab: RTSS (optional FPS source) ──────────────────────────────────────
     t4 = ttk.Frame(nb); nb.add(t4, text='  RTSS (FPS)  ')
@@ -1639,12 +1637,27 @@ def open_settings():
 
     # ── Save / Cancel ─────────────────────────────────────────────────────────
     def save_settings():
+        old_cfg = dict(cfg)
         cfg['com_port']      = com_var.get()
         cfg['fps']           = fps_var.get()
         cfg['theme_path']    = theme_var.get()
         cfg['autostart']     = auto_var.get()
         cfg['rtss_process']  = proc_var.get().strip() if rtss_mode_var.get()=='manual' else ''
+        cfg['hwinfo_path']   = hwinfo_path_var.get().strip()
+        cfg['hwinfo_auto_restart'] = auto_restart_var.get()
+        cfg['log_level']     = log_level_var.get()
+
+        # Log what actually changed, not just that Save was clicked -- useful
+        # for understanding behavior changes later (e.g. "why did logging
+        # stop" traces back to someone switching log_level to 'off' on a
+        # specific date).
+        for key in ('com_port','fps','autostart','rtss_process','hwinfo_path',
+                    'hwinfo_auto_restart','log_level'):
+            if old_cfg.get(key) != cfg.get(key):
+                log.info(f'Setting changed: {key} = {old_cfg.get(key)!r} -> {cfg.get(key)!r}')
+
         save_cfg(cfg)
+        set_log_level(cfg['log_level'])
         set_autostart(cfg['autostart'])
         if cfg['theme_path'] and cfg['theme_path'] != _current_theme_path:
             load_theme(cfg['theme_path'])
@@ -1667,7 +1680,7 @@ def set_autostart(enable):
             except: pass
         winreg.CloseKey(key)
     except Exception as e:
-        print(f'Autostart error: {e}')
+        log.error(f'Autostart error: {e}')
 
 def is_autostart():
     key_path = r'Software\Microsoft\Windows\CurrentVersion\Run'
@@ -1738,7 +1751,7 @@ def _load_theme_dialog_main():
         if load_theme(path):
             if not _running: start_display()
             update_tray_icon()
-            print(f'Theme loaded and display started: {path}')
+            log.info(f'Theme loaded and display started: {path}')
 
 def toggle_display(icon=None, item=None):
     if _running: stop_display()
@@ -1806,9 +1819,9 @@ def _uninstall_main():
             lnk = os.path.join(d, 'DS916 Tray.lnk')
             if os.path.exists(lnk):
                 os.unlink(lnk)
-                print(f'Removed shortcut: {lnk}')
+                log.info(f'Removed shortcut: {lnk}')
     except Exception as e:
-        print(f'Shortcut removal error: {e}')
+        log.warning(f'Shortcut removal error: {e}')
 
     # 3. Delete everything in CONFIG_DIR (theme_builder.html, config, sensors)
     # EXCEPT the running exe itself (Windows won't let us delete it while
@@ -1827,9 +1840,9 @@ def _uninstall_main():
                     shutil.rmtree(full)
                 else:
                     os.unlink(full)
-                print(f'Removed: {full}')
+                log.info(f'Removed: {full}')
             except Exception as e:
-                print(f'Removal error for {full}: {e}')
+                log.warning(f'Removal error for {full}: {e}')
 
     # 4. Clean up temp font files
     for path in _custom_font_files.values():
@@ -1945,13 +1958,21 @@ def _show_status_main():
         src_col   = '#d4b84a'
     row(s2, 'Source',       src_label, src_col)
 
-    import subprocess
-    task_ok = subprocess.run(
-        ['schtasks', '/query', '/tn', 'DS916_HWiNFO_Restart'],
-        capture_output=True).returncode == 0
-    row(s2, 'Auto-restart',
-        '✅ Task installed (every 11.5h)' if task_ok else '○ Not configured',
-        GRN if task_ok else MUT)
+    hwinfo_start = get_hwinfo_start_time()
+    if hwinfo_start:
+        uptime_h = (datetime.now() - hwinfo_start).total_seconds() / 3600
+        auto_on = cfg.get('hwinfo_auto_restart', False)
+        if auto_on:
+            next_restart_h = max(0, 11.5 - uptime_h)
+            restart_label = f'✅ Auto-restart on — next in ~{next_restart_h:.1f}h (uptime {uptime_h:.1f}h)'
+            restart_col = GRN
+        else:
+            restart_label = f'○ Auto-restart off (uptime {uptime_h:.1f}h)'
+            restart_col = MUT
+    else:
+        restart_label = '○ HWiNFO64 not running'
+        restart_col = MUT
+    row(s2, 'Auto-restart', restart_label, restart_col)
 
     # Sensors
     s3 = section('Live Sensor Snapshot')
@@ -2062,12 +2083,12 @@ if __name__ == '__main__':
     # fatal — read_sensors() retries on every sensor read, so it'll connect
     # automatically as soon as HWiNFO64 becomes available.
     if try_open_sharedmem():
-        print('HWiNFO source: Shared Memory ✅')
+        log.info('HWiNFO source: Shared Memory connected')
         # Auto-discover and save sensors on every startup
         discover_sensors()
     else:
-        print('HWiNFO source: unavailable for now — will keep retrying on each sensor read')
-        print('  (start HWiNFO64 with Settings -> General -> Shared Memory Support enabled)')
+        log.info('HWiNFO source: unavailable for now - will keep retrying on each sensor read')
+        log.info('  (start HWiNFO64 with Settings -> General -> Shared Memory Support enabled)')
 
     # Set autostart if configured
     if cfg.get('autostart', True):
