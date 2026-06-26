@@ -6,9 +6,19 @@ Versions follow [Semantic Versioning](https://semver.org/) loosely: **MAJOR** fo
 
 ## [Unreleased]
 
+## [1.5.0] — Cross-Vendor GPU Support
+
+### Added
+- Standard GPU sensor keys (`GPU_USAGE`, `GPU_TEMP`, `GPU_FAN1`, `GPU_POWER`, `VRAM_USED`) now automatically work on both NVIDIA and AMD cards with no theme builder changes needed after a GPU swap. Each key checks vendor-specific candidate sensor names and resolves fresh on every read.
+- `GPU_POWER` now uses AMD's `Total Board Power (TBP)` sensor (the real measured board-level total) rather than a single internal power rail, since AMD splits power across separate Core/GFX, SoC, and Memory rails with no combined sensor of its own.
+- `VRAM_USED` deliberately avoids AMD's `GPU Memory Usage` sensor, which has a confirmed, longstanding driver bug acknowledged by HWiNFO's own author (can report values hundreds of GB too high). Uses `GPU D3D Memory Dedicated` instead, which is accurate and matches AMD's own software and Windows Task Manager.
+- `VRAM_USAGE` (percentage) is now computed automatically from `VRAM_USED` and a built-in lookup table (`GPU_VRAM_GB`) of known GPU model names to VRAM capacity, since neither vendor exposes total VRAM capacity as a polled sensor. Checked once at startup (or on manual sensor re-discovery), not polled continuously, since VRAM capacity is static. Cards not in the table simply leave `VRAM_USAGE` unavailable rather than guessing; `VRAM_USED` keeps working regardless.
+- New wiki page: [GPU Vendor Support](https://github.com/mike-novotny/sensor-panel/wiki/GPU-Vendor-Support), documenting all of the above in detail.
+
 ### Changed
 - `build.bat` now automatically closes any running `DS916Tray.exe` before overwriting it, skips shortcut recreation if shortcuts already exist, and offers to relaunch the app immediately after a successful build — removing the need to manually uninstall, close, or relaunch between iterations during normal development.
 - Clarified in README and wiki that **Uninstall** is for removing the app from a machine entirely, not a routine step before rebuilding — `build.bat` already handles closing/overwriting a running instance on its own.
+- README's sensor key reference table updated to show vendor-specific source names where they differ, rather than implying one fixed sensor name per key.
 
 ## [1.4.0] — Logging System & HWiNFO Auto-Restart Redesign
 

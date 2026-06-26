@@ -212,14 +212,14 @@ STANDARD_SENSOR_NAMES = {
     'CPU_FREQ':     ['CPU Clock', 'Core Clocks (avg)'],
     'CPU_POWER':    ['CPU Package Power', 'CPU Power'],
     'CPU_VOLTAGE':  ['CPU Core Voltage', 'Vcore'],
-    'GPU_USAGE':    ['GPU Core Load', 'GPU Usage', 'GPU Load'],
+    'GPU_USAGE':    ['GPU Core Load', 'GPU Usage', 'GPU Load', 'GPU Utilization'],
     'GPU_TEMP':     ['GPU Temperature', 'GPU Temp'],
-    'GPU_FAN1':     ['GPU Fan1', 'GPU Fan 1'],
+    'GPU_FAN1':     ['GPU Fan1', 'GPU Fan 1', 'GPU Fan'],   # AMD cards commonly report a single 'GPU Fan' rather than separate Fan1/Fan2 - falls back here
     'GPU_FAN2':     ['GPU Fan2', 'GPU Fan 2'],
     'GPU_FREQ':     ['GPU Clock'],
-    'GPU_POWER':    ['GPU Power'],
-    'VRAM_USAGE':   ['GPU Memory Usage', 'GPU Memory Load'],
-    'VRAM_USED':    ['GPU Memory Used'],
+    'GPU_POWER':    ['GPU Power', 'Total Board Power (TBP)', ('GPU Core Power (VDDCR_GFX)', 1)],   # 'Total Board Power (TBP)' confirmed via HWiNFO's GPU sensor group on AMD RX 9070 XT -- a real measured total power draw, not a sum HWiNFO computes itself. Falls back to the GFX core rail only if TBP isn't available at all (underreports total power in that case, since it excludes SoC/memory rails).
+    'VRAM_USAGE':   ['GPU Memory Load'],   # percentage-based VRAM usage (NVIDIA-style naming) - AMD does not expose a reliable percentage equivalent; see note in read_sharedmem()
+    'VRAM_USED':    ['GPU Memory Used', ('GPU D3D Memory Dedicated', 1/1024), ('GPU Memory Usage', 1/1024)],   # 'GPU Memory Usage' is a CONFIRMED-BUGGY AMD driver value -- HWiNFO's own author (Martin) states on the HWiNFO forum (hwinfo.com/forum/threads/abnormal-reporting-of-gpu-memory-usage.9461/) that this is unreliable on AMD GPUs and recommends watching the GPU D3D Memory values instead. 'GPU D3D Memory Dedicated' (in MB, converted to GB here) is the correct, AMD-recommended replacement and is tried first; the buggy sensor is kept only as a last-resort fallback for systems where D3D Memory Dedicated isn't exposed at all.
     'RAM_USAGE':    ['Physical Memory Load'],
     'RAM_USED_GB':  ['Physical Memory Used'],
     'RAM_FREE_GB':  ['Physical Memory Available'],
@@ -305,10 +305,29 @@ def read_sharedmem(sensor_map=None):
             name_to_val[name] = val
 
         for key, candidates in STANDARD_SENSOR_NAMES.items():
-            for cname in candidates:
+            for cand in candidates:
+                # Candidates are either a plain sensor name (string), or a
+                # (name, multiplier) tuple when a vendor/driver reports the
+                # same metric in different units than this key expects --
+                # e.g. AMD's 'GPU Memory Usage' is in MB while VRAM_USED
+                # expects GB, so it's listed as ('GPU Memory Usage', 1/1024).
+                if isinstance(cand, tuple):
+                    cname, multiplier = cand
+                else:
+                    cname, multiplier = cand, 1
                 if cname in name_to_val:
-                    data[key] = name_to_val[cname]
+                    data[key] = name_to_val[cname] * multiplier
                     break
+
+        # VRAM_USAGE (percentage): no direct sensor exists for this on most
+        # AMD cards (and isn't always reliable on NVIDIA either). If we
+        # weren't able to resolve it directly above, compute it ourselves
+        # from VRAM_USED (GB) and the card's known total capacity, looked
+        # up once at startup via detect_gpu_vram_capacity(). If the card
+        # isn't in our known-capacity database, VRAM_USAGE simply stays
+        # unavailable rather than guessing.
+        if 'VRAM_USAGE' not in data and 'VRAM_USED' in data and _detected_vram_gb:
+            data['VRAM_USAGE'] = min(100.0, (data['VRAM_USED'] / _detected_vram_gb) * 100.0)
 
         # CUSTOM_N keys (manually wired sensors not covered by the standard
         # name table above) still use whatever literal index was saved with
@@ -328,6 +347,109 @@ def read_sharedmem(sensor_map=None):
         # leaving a possibly-broken mapping in place indefinitely.
         _shm_handle = None
     return data
+
+
+# ── GPU VRAM capacity lookup ───────────────────────────────────────────────────
+# HWiNFO does not expose total VRAM capacity as a polled sensor (it's static
+# hardware info, not something that changes frame to frame) -- there's no
+# sensor name for it on either NVIDIA or AMD cards in anything we've found.
+# Since VRAM_USAGE (a 0-100% sensor) needs a total to divide VRAM_USED by,
+# we keep a small lookup table of known card model -> VRAM capacity (GB) and
+# match it against the GPU's device name string from HWiNFO's sensor groups
+# (e.g. "dGPU [#0]: AMD Radeon RX 9070 XT: PowerColor Radeon RX 9070 XT").
+# This only needs to run once at startup, not on every read, since a card's
+# VRAM capacity never changes while the system is running.
+#
+# Keys are matched as case-insensitive substrings against the device name,
+# longest/most-specific match wins (so "RX 9070 XT" doesn't accidentally
+# match against a plain "RX 9070" entry or vice versa).
+GPU_VRAM_GB = {
+    # AMD RDNA4 / RDNA3
+    'RX 9070 XT':  16,
+    'RX 9070 GRE': 12,
+    'RX 9070':     16,
+    'RX 9060 XT':  16,   # also exists in an 8GB variant -- can't disambiguate by name alone
+    'RX 7900 XTX': 24,
+    'RX 7900 XT':  20,
+    'RX 7900 GRE': 16,
+    'RX 7800 XT':  16,
+    'RX 7700 XT':  12,
+    'RX 7600 XT':  16,
+    'RX 7600':     8,
+    # NVIDIA RTX 40 / 30 series
+    'RTX 4090':    24,
+    'RTX 4080 SUPER': 16,
+    'RTX 4080':    16,
+    'RTX 4070 TI SUPER': 16,
+    'RTX 4070 TI': 12,
+    'RTX 4070 SUPER': 12,
+    'RTX 4070':    12,
+    'RTX 4060 TI': 8,    # also has a 16GB variant -- can't disambiguate by name alone
+    'RTX 4060':    8,
+    'RTX 3090 TI': 24,
+    'RTX 3090':    24,
+    'RTX 3080 TI': 12,
+    'RTX 3080':    10,   # also has a 12GB variant
+    'RTX 3070 TI': 8,
+    'RTX 3070':    8,
+    'RTX 3060 TI': 8,
+    'RTX 3060':    12,   # also has an 8GB variant
+    '2080 TI':     11,
+    '2080 SUPER':  8,
+    '2080':        8,
+    '2070 SUPER':  8,
+    '2070':        8,
+    '2060 SUPER':  8,
+    '2060':        6,
+}
+
+_detected_vram_gb = None  # cached once at startup; None means "not yet checked" or "no match found"
+
+def detect_gpu_vram_capacity():
+    """Match the GPU's device name (from discovered sensor groups) against
+    GPU_VRAM_GB to find its known total VRAM capacity. Called once at
+    startup -- result is cached in _detected_vram_gb for the rest of the
+    session, since a card's VRAM capacity is static hardware info that
+    will never change while the app is running."""
+    global _detected_vram_gb
+    sensors_path = os.path.join(CONFIG_DIR, 'hwinfo_sensors.json')
+    if not os.path.exists(sensors_path):
+        return None
+    try:
+        with open(sensors_path, encoding='utf-8') as f:
+            disc = json.load(f)
+        device_names = disc.get('device_names', [])
+        gpu_name = None
+        for d in device_names:
+            name = d.get('name', '')
+            if 'gpu' in name.lower():
+                gpu_name = name
+                break
+        if not gpu_name:
+            log.debug('VRAM capacity lookup: no GPU device name found in discovered sensors')
+            return None
+
+        # Find the longest matching key (most specific match wins, so
+        # "RX 9070 XT" is preferred over a hypothetical shorter "RX 9070"
+        # match against the same name)
+        best_match = None
+        best_len = 0
+        upper_name = gpu_name.upper()
+        for key, gb in GPU_VRAM_GB.items():
+            if key.upper() in upper_name and len(key) > best_len:
+                best_match = key
+                best_len = len(key)
+                _detected_vram_gb = gb
+
+        if best_match:
+            log.info(f'VRAM capacity detected: "{gpu_name}" matched "{best_match}" -> {_detected_vram_gb} GB')
+        else:
+            log.info(f'VRAM capacity lookup: GPU "{gpu_name}" not found in known card database -- '
+                      f'VRAM_USAGE percentage will be unavailable (VRAM_USED in GB still works normally)')
+        return _detected_vram_gb
+    except Exception as e:
+        log.warning(f'VRAM capacity lookup error: {e}')
+        return None
 
 
 def discover_sensors():
@@ -2034,6 +2156,7 @@ def discover_sensors_tray(icon=None, item=None):
 def _discover_sensors_main():
     path = discover_sensors()
     if path:
+        detect_gpu_vram_capacity()  # re-check in case the GPU changed since last discovery
         messagebox.showinfo('DS916 — Sensor Discovery',
             f'✅ {len(json.load(open(path))["sensors"])} sensors discovered and saved.\n\n'
             f'{path}\n\n'
@@ -2086,6 +2209,10 @@ if __name__ == '__main__':
         log.info('HWiNFO source: Shared Memory connected')
         # Auto-discover and save sensors on every startup
         discover_sensors()
+        # Detect GPU VRAM capacity once at startup (static hardware info,
+        # never needs re-checking during the session) so VRAM_USAGE can be
+        # computed as a percentage even on cards that don't expose one directly
+        detect_gpu_vram_capacity()
     else:
         log.info('HWiNFO source: unavailable for now - will keep retrying on each sensor read')
         log.info('  (start HWiNFO64 with Settings -> General -> Shared Memory Support enabled)')

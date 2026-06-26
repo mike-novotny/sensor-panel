@@ -439,6 +439,20 @@ RTSS is fully optional — if it isn't installed or running, the framerate senso
 
 ---
 
+## GPU Vendor Support
+
+NVIDIA and AMD drivers expose hardware sensors to HWiNFO under different names, and AMD in particular splits some metrics (notably power) across multiple separate rails rather than one combined figure. This project's standard sensor keys (`GPU_USAGE`, `GPU_TEMP`, `GPU_FAN1`, `GPU_POWER`, `VRAM_USED`) automatically check the correct vendor-specific sensor name for whichever GPU is installed — you should never need to change which sensor an element is bound to after a GPU swap (NVIDIA ↔ AMD or otherwise); it should just work.
+
+A few vendor-specific notes worth knowing:
+
+- **`GPU_POWER`** uses AMD's "Total Board Power (TBP)" sensor, the complete board-level power draw, rather than any single internal power rail (AMD splits power into Core/GFX, SoC, and Memory rails with no single combined sensor of its own — TBP is HWiNFO's own measured total).
+- **`VRAM_USED`** deliberately avoids AMD's "GPU Memory Usage" sensor, which has a [confirmed, longstanding driver bug](https://www.hwinfo.com/forum/threads/abnormal-reporting-of-gpu-memory-usage.9461/) acknowledged by HWiNFO's own author — it can report wildly incorrect values (sometimes hundreds of GB on a card with a fraction of that installed). "GPU D3D Memory Dedicated" is used instead, which is accurate and matches what AMD's own software and Windows Task Manager report.
+- **`VRAM_USAGE`** (the percentage version) has no direct sensor on most AMD cards at all — HWiNFO doesn't expose total VRAM capacity as a sensor on any vendor, since it's static hardware info rather than something that changes over time. To work around this, the tray app keeps a small built-in lookup table of known GPU model names to their VRAM capacity, checked once at startup (or whenever you re-run sensor discovery) against your GPU's device name, then used to compute the percentage from `VRAM_USED` directly. If your specific card model isn't in the table, `VRAM_USAGE` simply stays unavailable rather than guessing — `VRAM_USED` (in GB) keeps working normally either way. The table covers most recent AMD RDNA3/4 and NVIDIA RTX 20/30/40-series cards; if yours is missing, this is a quick addition for anyone comfortable editing `GPU_VRAM_GB` in `ds916_tray.py`.
+
+If you swap GPUs and a sensor that used to work stops updating, you can check exactly what sensor names your installed GPU reports by reading directly from HWiNFO's shared memory — the `STANDARD_SENSOR_NAMES` candidate lists near the top of `ds916_tray.py` are where new vendor naming patterns would need adding. Open an issue if you find a sensor that needs a new candidate name added for your card.
+
+---
+
 ## Sensor Update Speed
 
 HWiNFO64 only refreshes sensor values as fast as its own **Polling Period** setting allows (2000ms / 2 seconds by default). If fast-changing sensors like CPU/GPU usage feel sluggish or "jumpy" on the panel — especially on bar/ring elements, which redraw instantly with no smoothing — this is almost always HWiNFO's polling rate, not anything fixable in this project. Lowering it in HWiNFO64's settings (gear icon → General Settings → Polling Period) to somewhere in the 500-1000ms range is a commonly used middle ground for a snappier feel, at a small CPU cost to HWiNFO itself. See the [HWiNFO Setup wiki page](https://github.com/mike-novotny/sensor-panel/wiki/HWiNFO-Setup#sensor-update-speed-polling-period) for the full breakdown and caveats.
@@ -543,15 +557,17 @@ Themes are saved as a single **`.ds916theme`** file — a JSON document with all
 
 ### Standard Sensor Keys
 
-| Key | HWiNFO Source Name |
+| Key | HWiNFO Source Name(s) |
 |-----|-------------------|
 | `CPU_USAGE` | Total CPU Usage |
-| `CPU_TEMP` | CPU (Tctl/Tdie) |
+| `CPU_TEMP` | CPU (Tctl/Tdie) — AMD, *or* CPU Package — Intel |
 | `CPU_FAN` | CPU1 |
-| `GPU_USAGE` | GPU Core Load |
+| `GPU_USAGE` | GPU Core Load — NVIDIA, *or* GPU Utilization — AMD |
 | `GPU_TEMP` | GPU Temperature |
-| `GPU_FAN1` / `GPU_FAN2` | GPU Fan1 / GPU Fan2 |
-| `VRAM_USAGE` | GPU Memory Usage |
+| `GPU_FAN1` | GPU Fan1 — multi-fan NVIDIA cards, *or* GPU Fan — AMD (single fan sensor) |
+| `GPU_POWER` | GPU Power — NVIDIA, *or* Total Board Power (TBP) — AMD |
+| `VRAM_USED` | GPU Memory Used — NVIDIA, *or* GPU D3D Memory Dedicated — AMD (AMD's "GPU Memory Usage" sensor is a [confirmed driver bug](https://www.hwinfo.com/forum/threads/abnormal-reporting-of-gpu-memory-usage.9461/) and is deliberately avoided) |
+| `VRAM_USAGE` | Computed automatically as VRAM_USED ÷ detected card capacity, for AMD cards in our built-in lookup table (see [GPU Vendor Support](#gpu-vendor-support) below). NVIDIA may expose this directly. |
 | `MB_TEMP` | Motherboard |
 | `CHASSIS_FAN1/2/3` | Chassis1 / Chassis2 / Chassis3 |
 | `RAM_USAGE` | Physical Memory Load |
